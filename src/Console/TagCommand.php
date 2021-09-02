@@ -74,9 +74,9 @@ class TagCommand extends Command
      */
     public function handle()
     {
-        $workingTree = $this->argument('working_tree') ?? config('goc-deploy.default_working_tree');
-        $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.default_deploy_branch');
-        $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.default_main_branch');
+        $workingTree = $this->argument('working_tree') ?? config('goc-deploy.defaults.working_tree');
+        $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch');
+        $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
         $this->validate($workingTree, $deployBranch, $mainBranch)
             ->gatherMetadata($workingTree, $deployBranch, $mainBranch)
@@ -88,7 +88,8 @@ class TagCommand extends Command
             ->outputChangelog()
             ->confirmBranchMerge();
 
-        dd($this->repoMetadata);
+        // Did not push merged commit or push --tags
+        //dd($this->repoMetadata);
     }
 
     /**
@@ -281,7 +282,7 @@ class TagCommand extends Command
      */
     public function readChangeLogFile(): self
     {
-        $file = fopen(config('goc-deploy.changelog_path'), "r");
+        $file = fopen(config('goc-deploy.defaults.changelog_path'), "r");
         $lines = explode("\n", fread($file, 4096));
         fclose($file);
 

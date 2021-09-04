@@ -23,3 +23,9 @@ A non-reusable Laravel package that automates the workflow of marging, tagging, 
 - https://www.atlassian.com/git/tutorials/inspecting-a-repository/git-tag
 - https://symfony.com/doc/current/components/process.html#usage
 
+Todd re-add
+    "require-dev": {
+        "orchestra/testbench": "^6.0",
+        "phpunit/phpunit": "^9.3"
+    },
+

@@ -3,22 +3,22 @@
 namespace Marcth\GocDeploy\Console;
 
 use Illuminate\Console\Command;
-use Marcth\GocDeploy\Repositories\GitRepository;
 use Symfony\Component\Process\Exception\ProcessFailedException;
 use Symfony\Component\Process\Process;
+use Illuminate\Support\Carbon;
 
 /**
  * Requires git
  * Requires Linux (mktemp -d)
  */
-class TagCommand extends Command
+class TpdCommand extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'goc-deploy:tag
+    protected $signature = 'goc-deploy:tpd
                             {deploy_branch? : The name of the branch to deploy.}
                             {working_tree?  : The path to the local working repository.}
                             {main_branch?   : The name of the main/master branch or branch to tag.}
@@ -30,8 +30,7 @@ class TagCommand extends Command
      * @var string
      * @todo I am Tag!
      */
-    protected $description = 'I am Tag!';
-
+    protected $description = 'goc-deploy:tag -> goc-deploy:package -> goc-deploy:deploy';
 
 
     /**
@@ -41,25 +40,22 @@ class TagCommand extends Command
      */
     public function handle()
     {
-        dd(__METHOD__);
-        $workingTree = $this->argument('working_tree') ?? config('goc-deploy.defaults.working_tree');
-        $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch');
-        $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
-        $gitRepository = new GitRepository($workingTree);
 
-//getRemoteUrl
-//refreshOriginMetadata
-//execute
-//process
-        $return = [
-            $workingTree => $workingTree,
-            $deployBranch => $deployBranch,
-            $mainBranch => $mainBranch,
+        $arguments = [
+            'working_tree' => $this->argument('working_tree'),
+            'deploy_branch' => $this->argument('deploy_branch'),
+            'main_branch' => $this->argument('main_branch'),
         ];
 
-        dd($return);
-    }
+        if($this->option('clone')) {
+            $arguments['--clone'] = 'default';
+        }
 
+
+        $data = $this->call('goc-deploy:tpd', $arguments);
+
+        dd($data);
+    }
 
 }

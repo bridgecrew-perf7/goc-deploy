@@ -17,6 +17,13 @@ class GitRepository
      *
      * @var string
      */
+    protected $name;
+
+    /**
+     * The working directory or null to use the working dir of the current PHP process.
+     *
+     * @var string
+     */
     protected $workingTree;
 
     /**
@@ -28,7 +35,17 @@ class GitRepository
     public function __construct(string $workingTree = null)
     {
         $this->workingTree = $this->getLocalRootPath($workingTree ?? getcwd());
+        $this->name = basename($this->workingTree);
     }
+
+    /**
+     * @return string
+     */
+    public function getWorkingTree(): string
+    {
+        return $this->workingTree;
+    }
+
 
     /**
      * @param string|null $workingTree
@@ -63,6 +80,51 @@ class GitRepository
     public function refreshOriginMetadata(string $workingTree = null)
     {
         $this->execute('git fetch origin', $workingTree ?? $this->workingTree);
+    }
+
+    /**
+     * @param string|null $workingTree
+     * @return string
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function getCurrentBranch(string $workingTree = null): string
+    {
+        return basename($this->execute('git symbolic-ref -q HEAD', $workingTree ?? $this->workingTree));
+    }
+
+    /**
+     * @param string $branch
+     * @param string|null $workingTree
+     * @return bool
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function hasBranch(string $branch, string $workingTree = null): bool
+    {
+        return (bool)$this->execute(
+            'git ls-remote --heads origin ' . $branch ,
+            $workingTree ?? $this->workingTree
+        );
+    }
+
+    /**
+     * @param string $branch
+     * @param string|null $workingTree
+     * @return GitRepository
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function checkoutBranch(string $branch, string $workingTree = null): self
+    {
+        $this->process(
+            'git -c advice.detachedHead=false checkout --quiet ' . $branch,
+            $workingTree ?? $this->workingTree);
+
+        return $this;
     }
 
 

@@ -38,11 +38,25 @@ class ExceptionHandler extends Exception implements ExceptionInterface
      */
     protected static function prepareProcessFailedException(ProcessFailedException $e)
     {
+        // error: pathspec 'develops' did not match any file(s) known to git
+        if ($e->getProcess()->getExitCode() == 1 &&
+            str_contains($e->getProcess()->getErrorOutput(), "pathspec")) {
+            throw new InvalidGitBranchException(null, null, $e);
+        }
+
+        // fatal: 'refs/heads/developg' - not a valid ref
+        if ($e->getProcess()->getExitCode() == 128 &&
+            str_contains($e->getProcess()->getErrorOutput(), 'not a valid ref')) {
+            throw new InvalidGitReferenceException(null, null, $e);
+        }
+
         // Fatal: not a git repository (or any of the parent directories): .git
-        if ($e->getProcess()->getExitCode() == 128) {
+        if ($e->getProcess()->getExitCode() == 128 &&
+            str_contains($e->getProcess()->getErrorOutput(), "Fatal: not a git repository")) {
             throw new InvalidGitRepositoryException(null, null, $e);
         }
 
+dd($e->getProcess()->getErrorOutput());
         throw new ProcessException($e->getProcess()->getErrorOutput(), $e->getProcess()->getExitCode(), $e);
     }
 

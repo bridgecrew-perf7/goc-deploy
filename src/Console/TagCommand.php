@@ -3,9 +3,10 @@
 namespace Marcth\GocDeploy\Console;
 
 use Illuminate\Console\Command;
+use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
+use Marcth\GocDeploy\Exceptions\InvalidPathException;
+use Marcth\GocDeploy\Exceptions\ProcessException;
 use Marcth\GocDeploy\Repositories\GitRepository;
-use Symfony\Component\Process\Exception\ProcessFailedException;
-use Symfony\Component\Process\Process;
 
 /**
  * Requires git
@@ -33,30 +34,42 @@ class TagCommand extends Command
     protected $description = 'I am Tag!';
 
 
-
     /**
      * Execute the console command.
      *
      * @return void
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
      */
     public function handle()
     {
-        dd(__METHOD__);
-        $workingTree = $this->argument('working_tree') ?? config('goc-deploy.defaults.working_tree');
         $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch');
         $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
-        $gitRepository = new GitRepository($workingTree);
+        $gitRepository = new GitRepository(
+            $this->argument('working_tree') ??
+            config('goc-deploy.defaults.working_tree'));
 
-//getRemoteUrl
-//refreshOriginMetadata
-//execute
-//process
+        $gitRepository->refreshOriginMetadata();
+
         $return = [
-            $workingTree => $workingTree,
-            $deployBranch => $deployBranch,
-            $mainBranch => $mainBranch,
+            'name' => $name ?? null,
+            'workingTree' => $gitRepository->getWorkingTree(),
+            'remoteUrl' => $gitRepository->getRemoteUrl(),
+            'initial' => [
+                'branch' => $gitRepository->getCurrentBranch(),
+                'workingTree' => $gitRepository->getWorkingTree(),
+            ],
+            'deployBranch' => $gitRepository->hasBranch($deployBranch),//->getCurrentBranch(),
+            'mainBranch' => $mainBranch,
         ];
+
+
+        //->1checkoutBranch
+
+        $return['name'] = basename($gitRepository->getWorkingTree());
+
 
         dd($return);
     }

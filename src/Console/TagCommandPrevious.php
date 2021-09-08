@@ -78,9 +78,10 @@ class TagCommandPrevious extends Command
         $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch');
         $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
-        $this->validate($workingTree, $deployBranch, $mainBranch)
-            ->gatherMetadata($workingTree, $deployBranch, $mainBranch)
-            ->cloneIfRequired()
+        $this
+            //->validate($workingTree, $deployBranch, $mainBranch)
+      //      ->gatherMetadata($workingTree, $deployBranch, $mainBranch)
+         //   ->cloneIfRequired()
             ->gatherTags()
             ->readChangeLogFile()
             ->outputRepositorySummary()
@@ -221,7 +222,7 @@ class TagCommandPrevious extends Command
      * @return array
      */
     protected function parseReleaseTag(string $releaseTag): array
-    {
+    {/*
         $pos = strpos($releaseTag, '-');
         $version = substr($releaseTag, 0, $pos ? $pos : strlen($releaseTag));
         $versionParts = explode('.', $version);
@@ -248,7 +249,7 @@ class TagCommandPrevious extends Command
                 $descriptor .= $revisionParts ? implode('-', $revisionParts) : null;
             }
         }
-
+*/
         return [
             'major' => $versionParts[0] ?? 0,
             'minor' => $versionParts[1] ?? 0,

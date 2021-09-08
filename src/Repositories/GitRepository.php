@@ -12,12 +12,6 @@ use Symfony\Component\Process\Exception\RuntimeException;
 
 class GitRepository
 {
-    /**
-     * The working directory or null to use the working dir of the current PHP process.
-     *
-     * @var string
-     */
-    protected $name;
 
     /**
      * The working directory or null to use the working dir of the current PHP process.
@@ -25,6 +19,13 @@ class GitRepository
      * @var string
      */
     protected $workingTree;
+
+    /**
+     * The remote url of the git repository.
+     *
+     * @var string
+     */
+    protected $url;
 
     /**
      * @param string|null $workingTree
@@ -35,7 +36,6 @@ class GitRepository
     public function __construct(string $workingTree = null)
     {
         $this->workingTree = $this->getLocalRootPath($workingTree ?? getcwd());
-        $this->name = basename($this->workingTree);
     }
 
     /**
@@ -68,7 +68,50 @@ class GitRepository
      */
     public function getRemoteUrl(string $workingTree = null): string
     {
-        return $this->execute('git config --get remote.origin.url', $workingTree ?? $this->workingTree);
+        if (!$this->url || $this->workingTree != $workingTree) {
+            $url = $this->execute('git config --get remote.origin.url', $workingTree ?? $this->workingTree);
+
+            if ($this->workingTree == $workingTree) {
+                $this->url = $url;
+            }
+        }
+
+        return $url ?? $this->url;
+    }
+
+    /**
+     * @param string|null $url
+     * @return string
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function parseNameFromUrl(string $url = null): string
+    {
+        return basename($url ?? $this->getRemoteUrl(), '.git');
+    }
+
+    /**
+     * @param string|null $url
+     * @return string
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function cloneToTemp(string $url = null): string
+    {
+        $url = $url ?? $this->getRemoteUrl();
+        $directory = $this->execute('mktemp -d');
+
+        $this->process('git clone ' . $url ?? $this->getRemoteUrl(), $directory);
+
+        $directory .= DIRECTORY_SEPARATOR . $this->parseNameFromUrl();
+
+        if ($url == $this->getRemoteUrl()) {
+            $this->workingTree = $directory;
+        }
+
+        return $directory;
     }
 
     /**
@@ -94,20 +137,102 @@ class GitRepository
         return basename($this->execute('git symbolic-ref -q HEAD', $workingTree ?? $this->workingTree));
     }
 
+//    /**
+//     * @param string $branch
+//     * @param string|null $workingTree
+//     * @return bool
+//     * @throws InvalidGitRepositoryException
+//     * @throws InvalidPathException
+//     * @throws ProcessException
+//     */
+//    public function hasBranch(string $branch, string $workingTree = null): bool
+//    {
+//        return (bool)$this->execute(
+//            'git ls-remote --heads origin ' . $branch,
+//            $workingTree ?? $this->workingTree
+//        );
+//    }
+
     /**
      * @param string $branch
      * @param string|null $workingTree
-     * @return bool
+     * @return string
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function hasBranch(string $branch, string $workingTree = null): bool
+    public function getCurrentTag(string $branch, string $workingTree = null): string
     {
-        return (bool)$this->execute(
-            'git ls-remote --heads origin ' . $branch ,
-            $workingTree ?? $this->workingTree
-        );
+        $workingTree = $workingTree ?? $this->workingTree;
+        $currentBranch = $this->getCurrentBranch($workingTree);
+
+
+        if($currentBranch != $branch) {
+            $this->checkoutBranch($branch, $workingTree);
+        }
+
+        $tag = $this->execute('git describe', $workingTree);
+
+        if($currentBranch != $branch) {
+            $this->checkoutBranch($currentBranch, $workingTree);
+        }
+
+        return $tag;
+    }
+
+    /**
+     * @param string $releaseTag
+     * @return array
+     */
+    public function parseVersionDetailsFromTag(string $releaseTag): array
+    {
+        $position = strpos($releaseTag, '-');
+        $version = substr($releaseTag, 0, $position ?: strlen($releaseTag));
+        $versionParts = explode('.', $version);
+        $metadata = $position ? substr($releaseTag, $position + 1) : null;
+
+        if ($metadata) {
+            $position = strrpos($metadata, '.');
+            $revision = substr($metadata, $position + 1);
+            $metadata = substr($metadata, 0, $position);
+
+            preg_match('/^(alpha|beta|jira|rc)?-?(.*)\.?([0-9]{0,3})$/',
+                $metadata,
+                $metadataParts,
+                PREG_OFFSET_CAPTURE);
+
+
+            $descriptor = $metadataParts[2][0] ?? null;
+
+            // If the revision contains non-num
+            if($revision && !is_int($revision)) {
+                $revisionParts = explode('-', $revision);
+                $revision = $revisionParts ? array_shift($revisionParts) : null;
+
+                $descriptor .= $revisionParts ? implode('-', $revisionParts) : null;
+            }
+        }
+
+        return [
+            'major' => $versionParts[0] ?? 0,
+            'minor' => $versionParts[1] ?? 0,
+            'patch' => $versionParts[2] ?? 0,
+            'type' => $metadataParts[1][0] ?? null,
+            'descriptor' => $descriptor ?? null,
+            'revision' => $revision ?? 0,
+        ];
+    }
+
+    /**
+     * @param string|null $workingTree
+     * @return string
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function hasLocalChanges(string $workingTree = null): string
+    {
+        return (bool)$this->execute('git status --porcelain', $workingTree ?? $this->workingTree);
     }
 
     /**
@@ -156,7 +281,7 @@ class GitRepository
         $cwd = $cwd ?? $this->workingTree;
         $env = null;
         $input = null;
-        $timeout = 4;
+        $timeout = 60;
 
         $process = new Process(explode(' ', $command), $cwd, $env, $input, $timeout);
 

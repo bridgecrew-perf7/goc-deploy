@@ -252,7 +252,6 @@ class GitRepository
         return $this;
     }
 
-
     /**
      * @param string $command
      * @param string|null $cwd

@@ -11,6 +11,9 @@ use Illuminate\Support\Collection as BaseCollection;
 use JsonSerializable;
 use Marcth\GocDeploy\Exceptions\MassAssignmentException;
 
+/**
+ * @link https://github.com/jenssegers/model
+ */
 abstract class Entity implements ArrayAccess, Arrayable, Jsonable, JsonSerializable
 {
 
@@ -703,7 +706,7 @@ abstract class Entity implements ArrayAccess, Arrayable, Jsonable, JsonSerializa
 
     /**
      * Set a given attribute on the model.
-     * 
+     *
      * @param string $key
      * @param $value
      * @return $this|null
@@ -845,7 +848,6 @@ abstract class Entity implements ArrayAccess, Arrayable, Jsonable, JsonSerializa
      *
      * @param string $key
      * @param  mixed  $value
-     * @return $this
      */
     public function __set(string $key, $value)
     {

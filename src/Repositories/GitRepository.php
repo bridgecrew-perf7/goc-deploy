@@ -2,139 +2,83 @@
 
 namespace Marcth\GocDeploy\Repositories;
 
+use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
-use Marcth\GocDeploy\Exceptions\ExceptionHandler;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
-use Symfony\Component\Process\Exception\ProcessFailedException;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\Exception\RuntimeException;
 
-class GitRepository
+class GitRepository extends Repository
 {
 
     /**
-     * The working directory or null to use the working dir of the current PHP process.
-     *
-     * @var string
-     */
-    protected $workingTree;
-
-    /**
-     * The remote url of the git repository.
-     *
-     * @var string
-     */
-    protected $url;
-
-    /**
-     * @param string|null $workingTree
-     * @throws InvalidGitRepositoryException
-     * @throws ProcessException
-     * @throws InvalidPathException
-     */
-    public function __construct(string $workingTree = null)
-    {
-        $this->workingTree = $this->getLocalRootPath($workingTree ?? getcwd());
-    }
-
-    /**
-     * @return string
-     */
-    public function getWorkingTree(): string
-    {
-        return $this->workingTree;
-    }
-
-
-    /**
-     * @param string|null $workingTree
+     * @param string $workingTree
      * @return string
      * @throws InvalidGitRepositoryException
      * @throws ProcessException
      * @throws InvalidPathException
      */
-    public function getLocalRootPath(string $workingTree = null): string
+    public function getLocalRootPath(string $workingTree): string
     {
-        return $this->execute('git rev-parse --show-toplevel', $workingTree ?? $this->workingTree);
+        return $this->execute('git rev-parse --show-toplevel', $workingTree);
     }
 
     /**
-     * @param string|null $workingTree
+     * @param string $workingTree
      * @return string
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function getRemoteUrl(string $workingTree = null): string
+    public function getRemoteUrl(string $workingTree): string
     {
-        if (!$this->url || $this->workingTree != $workingTree) {
-            $url = $this->execute('git config --get remote.origin.url', $workingTree ?? $this->workingTree);
-
-            if ($this->workingTree == $workingTree) {
-                $this->url = $url;
-            }
-        }
-
-        return $url ?? $this->url;
+        return $this->execute('git config --get remote.origin.url', $workingTree);
     }
 
     /**
-     * @param string|null $url
+     * @param string $url
+     * @return string
+     */
+    public function parseNameFromUrl(string $url): string
+    {
+        return basename($url, '.git');
+    }
+
+    /**
+     * @param string $url
      * @return string
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function parseNameFromUrl(string $url = null): string
+    public function cloneToTemp(string $url): string
     {
-        return basename($url ?? $this->getRemoteUrl(), '.git');
-    }
-
-    /**
-     * @param string|null $url
-     * @return string
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     */
-    public function cloneToTemp(string $url = null): string
-    {
-        $url = $url ?? $this->getRemoteUrl();
         $directory = $this->execute('mktemp -d');
+        $this->process('git clone ' . $url, $directory);
 
-        $this->process('git clone ' . $url ?? $this->getRemoteUrl(), $directory);
-
-        $directory .= DIRECTORY_SEPARATOR . $this->parseNameFromUrl();
-
-        if ($url == $this->getRemoteUrl()) {
-            $this->workingTree = $directory;
-        }
-
-        return $directory;
+        return  $directory . DIRECTORY_SEPARATOR . $this->parseNameFromUrl($url);
     }
 
     /**
-     * @param string|null $workingTree
+     * @param string $workingTree
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function refreshOriginMetadata(string $workingTree = null)
+    public function refreshOriginMetadata(string $workingTree)
     {
-        $this->execute('git fetch origin', $workingTree ?? $this->workingTree);
+        $this->execute('git fetch origin', $workingTree);
     }
 
     /**
-     * @param string|null $workingTree
+     * @param string $workingTree
      * @return string
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function getCurrentBranch(string $workingTree = null): string
+    public function getCurrentBranch(string $workingTree): string
     {
-        return basename($this->execute('git symbolic-ref -q HEAD', $workingTree ?? $this->workingTree));
+        return basename($this->execute('git symbolic-ref -q HEAD', $workingTree));
     }
 
 //    /**
@@ -155,17 +99,15 @@ class GitRepository
 
     /**
      * @param string $branch
-     * @param string|null $workingTree
+     * @param string $workingTree
      * @return string
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function getCurrentTag(string $branch, string $workingTree = null): string
+    public function getCurrentTag(string $branch, string $workingTree): string
     {
-        $workingTree = $workingTree ?? $this->workingTree;
         $currentBranch = $this->getCurrentBranch($workingTree);
-
 
         if($currentBranch != $branch) {
             $this->checkoutBranch($branch, $workingTree);
@@ -224,79 +166,36 @@ class GitRepository
     }
 
     /**
-     * @param string|null $workingTree
-     * @return string
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     */
-    public function hasLocalChanges(string $workingTree = null): string
-    {
-        return (bool)$this->execute('git status --porcelain', $workingTree ?? $this->workingTree);
-    }
-
-    /**
-     * @param string $branch
-     * @param string|null $workingTree
+     * @param string $workingTree
      * @return GitRepository
+     * @throws DirtyWorkingTreeException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function checkoutBranch(string $branch, string $workingTree = null): self
+    public function validateWorkingTree(string $workingTree): self
     {
-        $this->process(
-            'git -c advice.detachedHead=false checkout --quiet ' . $branch,
-            $workingTree ?? $this->workingTree);
+        $process = $this->process('git status --porcelain', $workingTree);
+
+        if(trim($process->getOutput())) {
+            throw new DirtyWorkingTreeException();
+        }
 
         return $this;
     }
 
     /**
-     * @param string $command
-     * @param string|null $cwd
-     * @return string
+     * @param string $branch
+     * @param string $workingTree
+     * @return GitRepository
      * @throws InvalidGitRepositoryException
-     * @throws ProcessException|InvalidPathException
-     */
-    private function execute(string $command, string $cwd = null): string
-    {
-        return trim($this->process($command, $cwd)->getOutput());
-    }
-
-    /**
-     * Process is a thin wrapper around proc_* functions to easily start independent PHP processes.
-     *
-     * @param string $command The command to run and its arguments
-     * @param string|null $cwd The working directory or null to use the working dir of the current PHP process
-     * @return Process
-     * @throws InvalidGitRepositoryException
-     * @throws ProcessException
      * @throws InvalidPathException
-     * @see vendor/symfony/process/Process.php
+     * @throws ProcessException
      */
-    private function process(string $command, string $cwd = null): Process
+    public function checkoutBranch(string $branch, string $workingTree): self
     {
-        $cwd = $cwd ?? $this->workingTree;
-        $env = null;
-        $input = null;
-        $timeout = 60;
+        $this->process('git -c advice.detachedHead=false checkout --quiet ' . $branch, $workingTree);
 
-        $process = new Process(explode(' ', $command), $cwd, $env, $input, $timeout);
-
-        try {
-            $process->run();
-
-            if (!$process->isSuccessful()) {
-                ExceptionHandler::prepare(new ProcessFailedException($process));
-            }
-
-
-        } catch (RuntimeException $e) {
-            ExceptionHandler::prepare($e);
-        }
-
-        return $process;
+        return $this;
     }
-
 }

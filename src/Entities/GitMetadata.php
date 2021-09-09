@@ -2,6 +2,12 @@
 
 namespace Marcth\GocDeploy\Entities;
 
+use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
+use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
+use Marcth\GocDeploy\Exceptions\InvalidPathException;
+use Marcth\GocDeploy\Exceptions\ProcessException;
+use Marcth\GocDeploy\Repositories\GitRepository;
+
 class GitMetadata extends Entity
 {
 
@@ -9,6 +15,44 @@ class GitMetadata extends Entity
         'name' => null,
         'url' => null,
         'workingTree' => null,
+        'deployBranch' => null,
+        'mainBranch' => null,
     ];
 
+
+    /**
+     * @param string $workingTree
+     * @param string $deployBranch
+     * @param string $mainBranch
+     * @return GitMetadata
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     * @throws DirtyWorkingTreeException
+     */
+    public static function make(string $workingTree, string $deployBranch, string $mainBranch): self
+    {
+        $repository = new GitRepository();
+
+        $repository->refreshOriginMetadata($workingTree);
+
+        $instance = new GitMetadata([
+            'url' => $repository->getRemoteUrl($workingTree),
+            'workingTree' => $repository->validateWorkingTree($workingTree)->getLocalRootPath($workingTree),
+            'deployBranch' => new GitBranch([
+                'name' => $deployBranch,
+                'tag' => $repository->getCurrentTag($deployBranch, $workingTree),
+            ]),
+            'mainBranch' => new GitBranch([
+                'name' => $mainBranch,
+                'tag' => $repository->getCurrentTag($mainBranch, $workingTree),
+            ]),
+        ]);
+
+        $instance->name = basename($instance->url, '.git');
+        $instance->deployBranch->version = $repository->parseVersionDetailsFromTag($instance->deployBranch->tag);
+        $instance->mainBranch->version = $repository->parseVersionDetailsFromTag($instance->mainBranch->tag);
+
+        return $instance;
+    }
 }

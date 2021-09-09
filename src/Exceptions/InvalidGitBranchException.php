@@ -20,12 +20,18 @@ class InvalidGitBranchException extends Exception implements ExceptionInterface
      * @link https://php.net/manual/en/exception.construct.php
      */
     public function __construct(string $message = null, $code = null, ProcessFailedException $previous = null) {
-        if (!$message) {
-            $message = sprintf(self::MESSAGE, ($previous instanceof ProcessFailedException) ?
-                ($previous->getProcess()->getWorkingDirectory() ?? null) : 'null');
+
+        if(!$message && $previous instanceof ProcessFailedException) {
+            $command = explode(' ', $previous->getProcess()->getCommandLine());
+            $branch = trim(array_pop($command), "'");
+            $workingDirectory = $previous->getProcess()->getWorkingDirectory();
+
+            $message = sprintf(self::MESSAGE, $branch, $workingDirectory);
         }
-dd($previous->getProcess());
-        $code = $code ?? self::CODE;
-        parent::__construct($message, $code);
+
+        parent::__construct(
+            $message ?? sprintf(self::MESSAGE, 'N/A', 'N/A'),
+            $code ?? self::CODE
+        );
     }
 }

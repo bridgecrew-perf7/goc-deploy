@@ -56,7 +56,6 @@ class ExceptionHandler extends Exception implements ExceptionInterface
             throw new InvalidGitRepositoryException(null, null, $e);
         }
 
-dd($e->getProcess()->getErrorOutput());
         throw new ProcessException($e->getProcess()->getErrorOutput(), $e->getProcess()->getExitCode(), $e);
     }
 

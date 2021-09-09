@@ -2,79 +2,58 @@
 
 namespace Marcth\GocDeploy\Traits;
 
+use Marcth\GocDeploy\Entities\GitMetadata;
+use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
+use Marcth\GocDeploy\Repositories\ChangelogRepository;
 use Marcth\GocDeploy\Repositories\GitRepository;
 
 trait TagCommandTrait
 {
+    protected $metadata;
+    protected $changelog;
 
     /**
      * Execute the console command.
      *
+     * @param GitRepository $repository
+     * @param ChangelogRepository $changelogRepository
      * @return void
+     * @throws DirtyWorkingTreeException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function handle()
+    public function handle(GitRepository $repository, ChangelogRepository $changelogRepository)
     {
-        $gitRepository = new GitRepository(
-            $this->argument('working_tree') ??
-            config('goc-deploy.defaults.working_tree'));
+        $workingTree = $this->argument('working_tree') ?? config('goc-deploy.defaults.working_tree');
+        $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch');
+        $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
-        $return = [
-            'name' => $name ?? null,
-            'workingTree' => $gitRepository->getWorkingTree(),
-            'remoteUrl' => $gitRepository->getRemoteUrl(),
-            'deploy' => [
-                'branch' => $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch'),
-                'tag' => null,
-            ],
-            'main' => [
-                'branch' => $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch'),
-                'tag' => null,
-            ],
-            'initial' => [
-                'branch' => $gitRepository->getCurrentBranch(),
-                'workingTree' => $gitRepository->getWorkingTree(),
-            ],
-        ];
+        if($this->option('clone')) {
+            $url = $repository->getRemoteUrl($workingTree);
 
-        $return['name'] = $gitRepository->parseNameFromUrl();
-
-        $gitRepository->refreshOriginMetadata();
-
-        if(!$this->option('clone')) {
-            if($gitRepository->hasLocalChanges()) {
-                $this->newLine();
-                $this->error(" ERROR: Resolve the uncommitted/untracked changes in your working branch.");
-                $this->newLine();
-                $this->line(" Hint: The '--clone' option can be used to bypass this issue.");
-                $this->newLine();
-
-                exit(1);
-            }
-        } else {
             $this->newLine();
-            $this->line("Cloning `" . $return['remoteUrl'] . "` to a temporary directory.");
+            $this->line('Cloning "' . $url . '" to a temporary directory.');
             $this->line('This may take a few moments...');
 
-            $return['workingTree'] = $gitRepository->cloneToTemp();
+            $workingTree = $repository->cloneToTemp($url);
 
-            $this->info('The repository has been cloned to `' . $return['workingTree'] . '`.');
+            $this->info('The repository has been cloned to "' . $workingTree . '".');
             $this->newLine();
         }
 
+        $this->metadata = GitMetadata::make($workingTree, $deployBranch, $mainBranch);
 
-        $return['deploy']['tag'] = $gitRepository->getCurrentTag($return['deploy']['branch']);
-        $return['deploy']['version'] = $gitRepository->parseVersionDetailsFromTag($return['deploy']['tag']);
+        $this->changelog = $changelogRepository->readChangeLogFile(config('goc-deploy.defaults.changelog_path'));
 
-        $return['main']['tag'] = $gitRepository->getCurrentTag($return['main']['branch']);
-        $return['main']['version'] = $gitRepository->parseVersionDetailsFromTag($return['main']['tag']);
-
-        dd($return);
+        dd($this->changelog);
+        dd($this->metadata);
     }
+
+
+
 
 }

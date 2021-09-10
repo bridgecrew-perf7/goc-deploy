@@ -2,7 +2,11 @@
 
 namespace Marcth\GocDeploy\Repositories;
 
+use Marcth\GocDeploy\Exceptions\ConnectionRefusedException;
 use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
+use Marcth\GocDeploy\Exceptions\GitMergeConflictException;
+use Marcth\GocDeploy\Exceptions\InvalidGitBranchException;
+use Marcth\GocDeploy\Exceptions\InvalidGitReferenceException;
 use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
@@ -13,9 +17,12 @@ class GitRepository extends Repository
     /**
      * @param string $workingTree
      * @return string
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
-     * @throws ProcessException
      * @throws InvalidPathException
+     * @throws ProcessException
      */
     public function getLocalRootPath(string $workingTree): string
     {
@@ -25,6 +32,9 @@ class GitRepository extends Repository
     /**
      * @param string $workingTree
      * @return string
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
@@ -46,13 +56,17 @@ class GitRepository extends Repository
     /**
      * @param string $url
      * @return string
+     * @throws ConnectionRefusedException
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
     public function cloneToTemp(string $url): string
     {
-        $directory = $this->execute('mktemp -d');
+        $directory = $this->execute('mktemp -d', base_path());
         $this->process('git clone ' . $url, $directory);
 
         return  $directory . DIRECTORY_SEPARATOR . $this->parseNameFromUrl($url);
@@ -60,18 +74,128 @@ class GitRepository extends Repository
 
     /**
      * @param string $workingTree
+     * @return GitRepository
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     * @throws ConnectionRefusedException
+     */
+    public function refreshOriginMetadata(string $workingTree): self
+    {
+        $this->process('git fetch origin', $workingTree);
+
+        return $this;
+    }
+
+    /**
+     * @param string $workingTree
+     * @return $this
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     * @throws ConnectionRefusedException
+     */
+    public function pullRemote(string $workingTree): self
+    {
+        $this->process('git pull', $workingTree);
+
+        return $this;
+    }
+
+    /**
+     * @param string $deployBranch
+     * @param string $workingTree
+     * @return $this
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     * @throws ConnectionRefusedException
+     */
+    public function mergeBranch(string $deployBranch, string $workingTree): self
+    {
+        $this->process('git merge --no-ff --no-edit ' . $deployBranch, $workingTree);
+
+        return $this;
+    }
+
+    /**
+     * @param string $workingTree
+     * @return $this
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     * @throws ConnectionRefusedException
+     */
+    public function abortMergeBranch(string $workingTree): self
+    {
+        $this->process('git merge --abort', $workingTree);
+
+        return $this;
+    }
+
+//    /**
+//     * @param string $workingTree
+//     * @return $this
+//     */
+//    public function pushToRemote(string $workingTree): self
+//    {
+//        $this->process('git push', $workingTree);
+//
+//        return $this;
+//    }
+//
+//    /**
+//     * @param string $workingTree
+//     * @return $this
+//     * @throws InvalidGitRepositoryException
+//     * @throws InvalidPathException
+//     * @throws ProcessException
+//     */
+//    public function pushTagsToRemote(string $workingTree): self
+//    {
+//        $this->process('git push --tags', $workingTree);
+//
+//        return $this;
+//    }
+
+    /**
+     * @param string $releaseTag
+     * @param string $workingTree
+     * @param string $changelogMessage
+     * @return $this
+     * @throws ConnectionRefusedException
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    public function refreshOriginMetadata(string $workingTree)
+    public function tagBranch(string $releaseTag, string $workingTree, string $changelogMessage): self
     {
-        $this->execute('git fetch origin', $workingTree);
+        $this->process('git tag -f -a ' . $releaseTag . ' -m ' . $changelogMessage, $workingTree);
+
+        return $this;
     }
 
     /**
      * @param string $workingTree
      * @return string
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
@@ -81,29 +205,17 @@ class GitRepository extends Repository
         return basename($this->execute('git symbolic-ref -q HEAD', $workingTree));
     }
 
-//    /**
-//     * @param string $branch
-//     * @param string|null $workingTree
-//     * @return bool
-//     * @throws InvalidGitRepositoryException
-//     * @throws InvalidPathException
-//     * @throws ProcessException
-//     */
-//    public function hasBranch(string $branch, string $workingTree = null): bool
-//    {
-//        return (bool)$this->execute(
-//            'git ls-remote --heads origin ' . $branch,
-//            $workingTree ?? $this->workingTree
-//        );
-//    }
-
     /**
      * @param string $branch
      * @param string $workingTree
      * @return string
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
+     * @throws ConnectionRefusedException
      */
     public function getCurrentTag(string $branch, string $workingTree): string
     {
@@ -169,9 +281,13 @@ class GitRepository extends Repository
      * @param string $workingTree
      * @return GitRepository
      * @throws DirtyWorkingTreeException
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
+     * @throws ConnectionRefusedException
      */
     public function validateWorkingTree(string $workingTree): self
     {
@@ -188,9 +304,13 @@ class GitRepository extends Repository
      * @param string $branch
      * @param string $workingTree
      * @return GitRepository
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
+     * @throws ConnectionRefusedException
      */
     public function checkoutBranch(string $branch, string $workingTree): self
     {

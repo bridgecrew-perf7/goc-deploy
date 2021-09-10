@@ -50,8 +50,8 @@ class GitMetadata extends Entity
         ]);
 
         $instance->name = basename($instance->url, '.git');
-        $instance->deployBranch->version = $repository->parseVersionDetailsFromTag($instance->deployBranch->tag);
-        $instance->mainBranch->version = $repository->parseVersionDetailsFromTag($instance->mainBranch->tag);
+        $instance->deployBranch->version = new Version($repository->parseVersionDetailsFromTag($instance->deployBranch->tag));
+        $instance->mainBranch->version = new Version($repository->parseVersionDetailsFromTag($instance->mainBranch->tag));
 
         return $instance;
     }

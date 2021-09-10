@@ -4,8 +4,7 @@ namespace Marcth\GocDeploy\Exceptions;
 
 use Exception;
 use Symfony\Component\Console\Exception\ExceptionInterface;
-use Symfony\Component\Process\Exception\ProcessFailedException;
-use Symfony\Component\Process\Process;
+use Throwable;
 
 class DirtyWorkingTreeException extends Exception implements ExceptionInterface
 {

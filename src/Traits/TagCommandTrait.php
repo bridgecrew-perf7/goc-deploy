@@ -3,6 +3,7 @@
 namespace Marcth\GocDeploy\Traits;
 
 use Marcth\GocDeploy\Entities\GitMetadata;
+use Marcth\GocDeploy\Exceptions\ConnectionRefusedException;
 use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\GitMergeConflictException;
 use Marcth\GocDeploy\Exceptions\InvalidGitBranchException;
@@ -185,6 +186,7 @@ trait TagCommandTrait
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
+     * @throws ConnectionRefusedException
      */
     protected function confirmBranchMerge(
         GitRepository $repository,
@@ -206,8 +208,14 @@ trait TagCommandTrait
                 $repository->mergeBranch($metadata->deployBranch->name, $metadata->workingTree);
                 $repository->tagBranch($releaseTag, $metadata->workingTree, implode("\n", $changelogMessage));
 
-                //$repository->pushToRemote($metadata->workingTree);
-                //$repository->pushTagsToRemote($metadata->workingTree);
+                $repository->pushToRemote($metadata->workingTree);
+                $repository->pushTagsToRemote($metadata->workingTree);
+
+                $repository->checkoutBranch($metadata->deployBranch->name, $metadata->workingTree);
+                $repository->pullRemote($metadata->workingTree);
+
+                $repository->mergeBranch($metadata->mainBranch->name, $metadata->workingTree);
+                $repository->pushToRemote($metadata->workingTree);
             } catch(GitMergeConflictException $e) {
                 $this->warn('Aborting git merge...');
 

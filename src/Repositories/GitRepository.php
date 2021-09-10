@@ -145,30 +145,41 @@ class GitRepository extends Repository
         return $this;
     }
 
-//    /**
-//     * @param string $workingTree
-//     * @return $this
-//     */
-//    public function pushToRemote(string $workingTree): self
-//    {
-//        $this->process('git push', $workingTree);
-//
-//        return $this;
-//    }
-//
-//    /**
-//     * @param string $workingTree
-//     * @return $this
-//     * @throws InvalidGitRepositoryException
-//     * @throws InvalidPathException
-//     * @throws ProcessException
-//     */
-//    public function pushTagsToRemote(string $workingTree): self
-//    {
-//        $this->process('git push --tags', $workingTree);
-//
-//        return $this;
-//    }
+    /**
+     * @param string $workingTree
+     * @return $this
+     * @throws ConnectionRefusedException
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function pushToRemote(string $workingTree): self
+    {
+        $this->process('git push', $workingTree);
+
+        return $this;
+    }
+
+    /**
+     * @param string $workingTree
+     * @return $this
+     * @throws ConnectionRefusedException
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function pushTagsToRemote(string $workingTree): self
+    {
+        $this->process('git push --tags -f', $workingTree);
+
+        return $this;
+    }
 
     /**
      * @param string $releaseTag
@@ -185,7 +196,7 @@ class GitRepository extends Repository
      */
     public function tagBranch(string $releaseTag, string $workingTree, string $changelogMessage): self
     {
-        $this->process('git tag -f -a ' . $releaseTag . ' -m ' . $changelogMessage, $workingTree);
+        $this->process(['git', 'tag' , '-f',  '-a', $releaseTag, '-m', $changelogMessage], $workingTree);
 
         return $this;
     }

@@ -37,7 +37,7 @@ abstract class Repository
     /**
      * Process is a thin wrapper around proc_* functions to easily start independent PHP processes.
      *
-     * @param string $command The command to run and its arguments
+     * @param string|array $command The command to run and its arguments
      * @param string|null $cwd The working directory or null to use the working dir of the current PHP process
      * @return Process
      *
@@ -51,13 +51,17 @@ abstract class Repository
      *
      * @see vendor/symfony/process/Process.php
      */
-    protected function process(string $command, string $cwd): Process
+    protected function process($command, string $cwd): Process
     {
         $env = null;
         $input = null;
         $timeout = 60;
 
-        $process = new Process(explode(' ', $command), $cwd, $env, $input, $timeout);
+        if(is_string($command)) {
+            $command = explode(' ', $command);
+        }
+
+        $process = new Process($command, $cwd, $env, $input, $timeout);
 
         try {
             $process->run();
@@ -70,13 +74,13 @@ abstract class Repository
             throw new ProcessException($e->getMessage(), $e->getCode());
 
         } catch (ProcessFailedException $e) {
+            print __METHOD__ . ':' . __LINE__ . ":\n";
+            print '$e->getCode() = ' . $e->getCode();
+            print '$e->getMessage() = ' . $e->getMessage();
+            print '$e->getProcess()->getExitCode() = ' . $e->getProcess()->getExitCode();
+            print '$e->getProcess()->getErrorOutput() = ' . $e->getProcess()->getErrorOutput();
+            exit(0);
             if(0 < 1) {
-//                print __METHOD__ . ':' . __LINE__ . ":\n";
-//                print '$e->getCode() = ' . $e->getCode();
-//                print '$e->getMessage() = ' . $e->getMessage();
-//                print '$e->getProcess()->getExitCode() = ' . $e->getProcess()->getExitCode();
-//                print '$e->getProcess()->getErrorOutput() = ' . $e->getProcess()->getErrorOutput();
-
                 //The command "'git' 'merge' '--no-ff' '--no-edit' 'develop'" failed.
                 if(str_contains($e->getMessage(), 'Automatic merge failed')) {
                     throw new GitMergeConflictException(null, null, $e);
@@ -88,6 +92,12 @@ abstract class Repository
                 if(str_contains($e->getProcess()->getErrorOutput(), "did not match any file(s) known to git")) {
                     throw new InvalidGitBranchException(null, null, $e);
                 }
+
+// Added -f to command
+//                //The command "'git' 'push' '--tags'" failed.
+//                if(str_contains($e->getMessage(), "-tags")) {
+//                    throw new GitPushTagsFailedException($e->getMessage(), null, $e);
+//                }
             }
 
             if($e->getProcess()->getExitCode() == 128) {

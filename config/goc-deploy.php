@@ -5,13 +5,36 @@ return [
     |--------------------------------------------------------------------------
     | Application Name
     |--------------------------------------------------------------------------
-    |
-    | GOC Deploy is a non-reusable, workflow-specific package
-    | framework needs to place the application's name in a notification or
-    | any other location as required by the application or its packages.
-    |
+    | GOC Deploy is a non-reusable, workflow-specific package.
     */
     'name' => 'GOC Deploy',
+
+    /*
+    |--------------------------------------------------------------------------
+    | The default URL of the remote git directory that is associated with this
+    | project.
+    |--------------------------------------------------------------------------
+    */
+    //'repository_url' => env('GOC_DEPLOY_DEFAULT_REPOSITORY_URL', NULL),
+
+    /*
+    |--------------------------------------------------------------------------
+    | The default path to the CHANGELOG file where the message associated with
+    | the tagged release will be extracted.
+    |--------------------------------------------------------------------------
+    */
+    'changelog' => base_path() . '/CHANGELOG',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Optional. An array of localized message catalogs that can be compiled to
+    | binary format via msgfmt (e.g. gettext).
+    |--------------------------------------------------------------------------
+    */
+    'lc_message_catalogs' => [
+        //'en_CA' => base_path('resources/i18n/en_CA/LC_MESSAGES/messages.po'),
+        //'fr_CA' => base_path('resources/i18n/fr_CA/LC_MESSAGES/messages.po'),
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -52,14 +75,6 @@ return [
         |--------------------------------------------------------------------------
         */
         'main_branch' => env('GOC_DEPLOY_DEFAULT_MAIN_BRANCH', 'master'),
-
-        /*
-        |--------------------------------------------------------------------------
-        | The default path to the CHANGELOG file where the message associated with
-        | the tagged release will be extracted.
-        |--------------------------------------------------------------------------
-        */
-        'changelog_path' => base_path() . '/CHANGELOG',
     ],
 
 

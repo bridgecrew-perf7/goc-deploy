@@ -69,7 +69,7 @@ class GitRepository extends Repository
         $directory = $this->execute('mktemp -d', base_path());
         $this->process('git clone ' . $url, $directory);
 
-        return  $directory . DIRECTORY_SEPARATOR . $this->parseNameFromUrl($url);
+        return $directory . DIRECTORY_SEPARATOR . $this->parseNameFromUrl($url);
     }
 
     /**
@@ -88,9 +88,8 @@ class GitRepository extends Repository
     {
         $this->process('git clone ' . $url, $directory);
 
-        return  $this;
+        return $this;
     }
-
 
 
     /**
@@ -217,7 +216,7 @@ class GitRepository extends Repository
      */
     public function tagBranch(string $releaseTag, string $workingTree, string $changelogMessage): self
     {
-        $this->process(['git', 'tag' , '-f',  '-a', $releaseTag, '-m', $changelogMessage], $workingTree);
+        $this->process(['git', 'tag', '-f', '-a', $releaseTag, '-m', $changelogMessage], $workingTree);
 
         return $this;
     }
@@ -253,13 +252,13 @@ class GitRepository extends Repository
     {
         $currentBranch = $this->getCurrentBranch($workingTree);
 
-        if($currentBranch != $branch) {
+        if ($currentBranch != $branch) {
             $this->checkoutBranch($branch, $workingTree);
         }
 
         $tag = $this->execute('git describe', $workingTree);
 
-        if($currentBranch != $branch) {
+        if ($currentBranch != $branch) {
             $this->checkoutBranch($currentBranch, $workingTree);
         }
 
@@ -291,7 +290,7 @@ class GitRepository extends Repository
             $descriptor = $metadataParts[2][0] ?? null;
 
             // If the revision contains non-num
-            if($revision && !is_int($revision)) {
+            if ($revision && !is_int($revision)) {
                 $revisionParts = explode('-', $revision);
                 $revision = $revisionParts ? array_shift($revisionParts) : null;
 
@@ -325,7 +324,7 @@ class GitRepository extends Repository
     {
         $process = $this->process('git status --porcelain', $workingTree);
 
-        if(trim($process->getOutput())) {
+        if (trim($process->getOutput())) {
             throw new DirtyWorkingTreeException();
         }
 
@@ -352,15 +351,13 @@ class GitRepository extends Repository
     }
 
 
-    public function package(string $branch, string $workingTree) {
-//        $output = $this->execute('msgfmt ./resources/i18n/en_CA/LC_MESSAGES/messages.po -o ./resources/i18n/en_CA/LC_MESSAGES/messages.mo', $workingTree);
-//        print $output . "\n";
-//
-//        $output = $this->execute('msgfmt ./resources/i18n/fr_CA/LC_MESSAGES/messages.po -o ./resources/i18n/fr_CA/LC_MESSAGES/messages.mo', $workingTree);
-//        print $output . "\n";
-//
-//        $output = $this->execute('composer install --optimize-autoloader --no-dev', $workingTree);
-//        print $output . "\n";
+    public function package(string $workingTree)
+    {
+        $output = $this->execute('msgfmt ./resources/i18n/fr_CA/LC_MESSAGES/messages.po -o ./resources/i18n/fr_CA/LC_MESSAGES/messages.mo', $workingTree);
+        print $output . "\n";
+
+        $output = $this->execute('composer install --optimize-autoloader --no-dev', $workingTree);
+        print $output . "\n";
 //
 //        $output = $this->execute('bower install', $workingTree);
 //        print $output . "\n";
@@ -371,7 +368,6 @@ class GitRepository extends Repository
 //        $output = $this->execute('npm run production', $workingTree);
 //        print $output . "\n";
 
-        $workingTree = "/var/www/";
 
         $output = $this->execute(implode(' ', [
             'tar',
@@ -385,14 +381,16 @@ class GitRepository extends Repository
             '--exclude=.env',
             '--exclude=scripts',
             '--exclude=bootstrap/cache/*',
-            '--directory=/var/www/passport/src',
+            '--directory=' . $workingTree,
             '-zvcf',
             'passport-src_test.tar.gz',
             '.',
-            ]), $workingTree);
+        ]), '/var/www');
 
         print $output . "\n";
 
+        $output = $this->execute('composer install', $workingTree);
+        print $output . "\n";
 
 
     }

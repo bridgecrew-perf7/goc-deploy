@@ -1,6 +1,7 @@
 {
     "name": "marcth/goc-deploy",
     "description": "A non-reusable Laravel package that automates the workflow of marging, tagging, packaging and deploying applications to secured environments through a dockerized OpenConnect VPN tunnel via SCP.",
+    "version": "1.0.0",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -35,10 +36,5 @@
               "Marcth\\GocDeploy\\GocDeployServiceProvider"
             ]
         }
-    },
-    "config": {
-        "sort-packages": true
-    },
-    "minimum-stability": "dev",
-    "prefer-stable": true
+    }
 }

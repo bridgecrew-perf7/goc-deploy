@@ -7,7 +7,10 @@ A non-reusable Laravel package that automates the workflow of marging, tagging, 
 "repositories": [
     {
         "type": "path",
-        "url": "./packages/goc-deploy"
+        "url": "./packages/goc-deploy",
+        "options": {
+            "symlink": true
+        }
     }
 ],
 ```

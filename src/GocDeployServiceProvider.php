@@ -31,7 +31,6 @@ class GocDeployServiceProvider extends ServiceProvider
     {
         if ($this->app->runningInConsole()) {
             $this->commands([
-                TagCommand::class,
                 DeployCommand::class,
             ]);
         }

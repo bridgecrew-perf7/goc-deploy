@@ -33,6 +33,7 @@ trait TagCommandTrait
      * @throws ProcessException
      * @throws InvalidGitBranchException
      * @throws InvalidGitReferenceException
+     * @throws ConnectionRefusedException
      */
     public function handle(GitRepository $repository, ChangelogRepository $changelogRepository)
     {

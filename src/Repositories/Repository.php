@@ -55,7 +55,7 @@ abstract class Repository
     {
         $env = null;
         $input = null;
-        $timeout = 60;
+        $timeout = 120;
 
         if(is_string($command)) {
             $command = explode(' ', $command);
@@ -74,12 +74,12 @@ abstract class Repository
             throw new ProcessException($e->getMessage(), $e->getCode());
 
         } catch (ProcessFailedException $e) {
-            print __METHOD__ . ':' . __LINE__ . ":\n";
-            print '$e->getCode() = ' . $e->getCode();
-            print '$e->getMessage() = ' . $e->getMessage();
-            print '$e->getProcess()->getExitCode() = ' . $e->getProcess()->getExitCode();
-            print '$e->getProcess()->getErrorOutput() = ' . $e->getProcess()->getErrorOutput();
-            exit(0);
+//            print __METHOD__ . ':' . __LINE__ . ":\n";
+//            print '$e->getCode() = ' . $e->getCode();
+//            print '$e->getMessage() = ' . $e->getMessage();
+//            print '$e->getProcess()->getExitCode() = ' . $e->getProcess()->getExitCode();
+//            print '$e->getProcess()->getErrorOutput() = ' . $e->getProcess()->getErrorOutput();
+//            exit(0);
             if(0 < 1) {
                 //The command "'git' 'merge' '--no-ff' '--no-edit' 'develop'" failed.
                 if(str_contains($e->getMessage(), 'Automatic merge failed')) {

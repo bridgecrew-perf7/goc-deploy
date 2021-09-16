@@ -73,6 +73,27 @@ class GitRepository extends Repository
     }
 
     /**
+     * @param string $url
+     * @param string $directory
+     * @return GitRepository
+     * @throws ConnectionRefusedException
+     * @throws GitMergeConflictException
+     * @throws InvalidGitBranchException
+     * @throws InvalidGitReferenceException
+     * @throws InvalidGitRepositoryException
+     * @throws InvalidPathException
+     * @throws ProcessException
+     */
+    public function clone(string $url, string $directory): self
+    {
+        $this->process('git clone ' . $url, $directory);
+
+        return  $this;
+    }
+
+
+
+    /**
      * @param string $workingTree
      * @return GitRepository
      * @throws GitMergeConflictException
@@ -328,5 +349,51 @@ class GitRepository extends Repository
         $this->process('git -c advice.detachedHead=false checkout --quiet ' . $branch, $workingTree);
 
         return $this;
+    }
+
+
+    public function package(string $branch, string $workingTree) {
+//        $output = $this->execute('msgfmt ./resources/i18n/en_CA/LC_MESSAGES/messages.po -o ./resources/i18n/en_CA/LC_MESSAGES/messages.mo', $workingTree);
+//        print $output . "\n";
+//
+//        $output = $this->execute('msgfmt ./resources/i18n/fr_CA/LC_MESSAGES/messages.po -o ./resources/i18n/fr_CA/LC_MESSAGES/messages.mo', $workingTree);
+//        print $output . "\n";
+//
+//        $output = $this->execute('composer install --optimize-autoloader --no-dev', $workingTree);
+//        print $output . "\n";
+//
+//        $output = $this->execute('bower install', $workingTree);
+//        print $output . "\n";
+//
+//        $output = $this->execute('npm install', $workingTree);
+//        print $output . "\n";
+//
+//        $output = $this->execute('npm run production', $workingTree);
+//        print $output . "\n";
+
+        $workingTree = "/var/www/";
+
+        $output = $this->execute(implode(' ', [
+            'tar',
+            '--exclude-vcs',
+            '--exclude=bower_components',
+            '--exclude=node_modules',
+            '--exclude=storage',
+            '--exclude=tests',
+            '--exclude=.idea',
+            '--exclude=.editorconfig',
+            '--exclude=.env',
+            '--exclude=scripts',
+            '--exclude=bootstrap/cache/*',
+            '--directory=/var/www/passport/src',
+            '-zvcf',
+            'passport-src_test.tar.gz',
+            '.',
+            ]), $workingTree);
+
+        print $output . "\n";
+
+
+
     }
 }

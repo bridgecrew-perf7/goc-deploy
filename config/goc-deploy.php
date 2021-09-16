@@ -23,9 +23,19 @@ return [
         |--------------------------------------------------------------------------
         | The default path to the local git directory that is associated with a
         | repository.
+        |
+        | DEPRECATED
         |--------------------------------------------------------------------------
         */
         'working_tree' => env('GOC_DEPLOY_DEFAULT_WORKING_TREE', base_path()),
+
+        /*
+        |--------------------------------------------------------------------------
+        | The default URL of the remote git directory that is associated with this
+        | project.
+        |--------------------------------------------------------------------------
+        */
+        'repository_url' => env('GOC_DEPLOY_DEFAULT_REPOSITORY_URL', NULL),
 
         /*
         |--------------------------------------------------------------------------
@@ -51,8 +61,6 @@ return [
         */
         'changelog_path' => base_path() . '/CHANGELOG',
     ],
-
-
 
 
 ];

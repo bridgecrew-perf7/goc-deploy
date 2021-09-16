@@ -3,9 +3,8 @@
 namespace Marcth\GocDeploy;
 
 use Illuminate\Support\ServiceProvider;
-use Marcth\GocDeploy\Console\PackageCommand;
+use Marcth\GocDeploy\Console\DeployCommand;
 use Marcth\GocDeploy\Console\TagCommand;
-use Marcth\GocDeploy\Console\TpdCommand;
 
 class GocDeployServiceProvider extends ServiceProvider
 {
@@ -33,8 +32,7 @@ class GocDeployServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 TagCommand::class,
-                PackageCommand::class,
-                TpdCommand::class,
+                DeployCommand::class,
             ]);
         }
     }

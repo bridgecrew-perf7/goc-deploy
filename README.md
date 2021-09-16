@@ -11,7 +11,7 @@ A non-reusable Laravel package that automates the workflow of marging, tagging, 
     }
 ],
 ```
-- Issue the `composer require marcth/goc-deploy` command
+- Issue the `composer require marcth/goc-deploy --dev` command
 - Issue the `php artisan vendor:publish` command and enter the number associated with Provider:
 
       Marcth\GocDeploy\GocDeployServiceProvider

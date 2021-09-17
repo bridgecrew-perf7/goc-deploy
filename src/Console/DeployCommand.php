@@ -33,7 +33,7 @@ class DeployCommand extends Command
                             {main_branch?   : The name of the main/master branch or branch to tag.}
                             {--C|clone      : Clone a working repository into a new temporary directory.}
                             ';
-
+//deployment_working_tree; merge_branch, main_branch
     /**
      * The console command description.
      *
@@ -52,6 +52,7 @@ class DeployCommand extends Command
      * @param GitRepository $repository
      * @param ChangelogRepository $changelogRepository
      * @return void
+     *
      * @throws DirtyWorkingTreeException
      * @throws GitMergeConflictException
      * @throws InvalidGitRepositoryException
@@ -79,23 +80,30 @@ class DeployCommand extends Command
         $this->outputRepositorySummary($metadata)->outputBranchVersionSummaries($metadata);
         $this->outputChangelog($this->parseChangelog($cmdRepository, config('goc-deploy.changelog')));
 
-         /*
-        $question = 'Please enter the tag reference for this release to staging:';
-        $releaseTag = $this->ask($question, $this->getReleaseTagSuggestion($metadata));
+        /*
+       $question = 'Please enter the tag reference for this release to staging:';
+       $releaseTag = $this->ask($question, $this->getReleaseTagSuggestion($metadata));
 
-        $question = 'Do you want to merge "%s" into "%s" and reference it with tag "%s" using the changelog above?';
-        $question = sprintf($question, $metadata->deployBranch->name, $metadata->mainBranch->name, $releaseTag);
+       $question = 'Do you want to merge "%s" into "%s" and reference it with tag "%s" using the changelog above?';
+       $question = sprintf($question, $metadata->deployBranch->name, $metadata->mainBranch->name, $releaseTag);
 
-        if (!$this->confirm($question)) {
-            $this->warn('Aborted by user.');
-            $this->newLine();
-            exit(0);
-        }
-        */
+       if (!$this->confirm($question)) {
+           $this->warn('Aborted by user.');
+           $this->newLine();
+           exit(0);
+       }
+       */
 
         $releaseTag = $this->getReleaseTagSuggestion($metadata);
 
         $this->compileMessageCatalogs($cmdRepository, config('goc-deploy.lc_message_catalogs'));
+
+        $this->line('Installing non-development composer dependencies...');
+        $cmdRepository->composerInstall($workingTree, false);
+        $this->info('done.');
+
+
+
 
         dd(__METHOD__);
 
@@ -106,7 +114,6 @@ class DeployCommand extends Command
         $gitRepository->package($workingTree);
 
         dd($this->metadata);
-
 
 
     }
@@ -277,6 +284,7 @@ class DeployCommand extends Command
      * @param string $releaseTag
      * @param array $changelogMessage
      * @return bool
+     *
      * @throws GitMergeConflictException
      * @throws InvalidGitBranchException
      * @throws InvalidGitReferenceException
@@ -329,12 +337,14 @@ class DeployCommand extends Command
      */
     public function compileMessageCatalogs(CmdRepository $cmdRepository, ?array $messageCatalogs): self
     {
-        if($messageCatalogs) {
+        if ($messageCatalogs) {
             foreach ($messageCatalogs as $messageCatalog) {
-                $this->info('Compiling message catalog "' . $messageCatalog . '" to binary format.');
+                $this->info('Compiling message catalog "' . $messageCatalog . '"....');
                 $cmdRepository->compileMessageCatalog($messageCatalog);
             }
         }
+
+        $this->newLine();
 
         return $this;
     }

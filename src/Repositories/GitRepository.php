@@ -350,12 +350,8 @@ class GitRepository extends Repository
         return $this;
     }
 
-
     public function package(string $workingTree)
     {
-        $output = $this->execute('msgfmt ./resources/i18n/fr_CA/LC_MESSAGES/messages.po -o ./resources/i18n/fr_CA/LC_MESSAGES/messages.mo', $workingTree);
-        print $output . "\n";
-
         $output = $this->execute('composer install --optimize-autoloader --no-dev', $workingTree);
         print $output . "\n";
 //

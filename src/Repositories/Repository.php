@@ -50,6 +50,7 @@ abstract class Repository
      * @throws ConnectionRefusedException
      *
      * @see vendor/symfony/process/Process.php
+     * @todo remove these exceptions.
      */
     protected function process($command, string $cwd): Process
     {

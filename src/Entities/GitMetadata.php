@@ -6,7 +6,7 @@ use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
-use Marcth\GocDeploy\Repositories\GitRepository;
+use Marcth\GocDeploy\Repositories\Repository;
 
 class GitMetadata extends Entity
 {
@@ -32,9 +32,7 @@ class GitMetadata extends Entity
      */
     public static function make(string $workingTree, string $deployBranch, string $mainBranch): self
     {
-        $repository = new GitRepository();
-
-        $repository->refreshOriginMetadata($workingTree);
+        $repository = new Repository();
 
         $instance = new GitMetadata([
             'url' => $repository->getRemoteUrl($workingTree),

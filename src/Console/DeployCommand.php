@@ -13,12 +13,11 @@ use Marcth\GocDeploy\Exceptions\InvalidGitReferenceException;
 use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
-use Marcth\GocDeploy\Repositories\CmdRepository;
-use Marcth\GocDeploy\Repositories\GitRepository;
+use Marcth\GocDeploy\Repositories\Repository;
+use Symfony\Component\Process\Exception\ProcessFailedException;
 
 /**
  * Requires git
- * Requires Linux (mktemp -d)
  */
 class DeployCommand extends Command
 {
@@ -28,12 +27,11 @@ class DeployCommand extends Command
      * @var string
      */
     protected $signature = 'ssc:deploy
-                            {working_tree?  : The path to the local working repository.}
-                            {deploy_branch? : The name of the branch to deploy.}
-                            {main_branch?   : The name of the main/master branch or branch to tag.}
-                            {--C|clone      : Clone a working repository into a new temporary directory.}
+                            {merge_branch?    : The name of the branch to merge into main_branch.}
+                            {main_branch?     : The name of the main/master branch to tag, package and release.}
+                            {deployment_path? : The path to the base deployment directory (i.e. Not this working tree).}
                             ';
-//deployment_working_tree; merge_branch, main_branch
+
     /**
      * The console command description.
      *
@@ -42,15 +40,15 @@ class DeployCommand extends Command
      */
     protected $description = 'I am Deploy!';
 
-    protected $metadata;
-    protected $changelog;
-    protected $releaseTag;
+    /**
+     * @var Repository
+     */
+    protected $repository;
 
     /**
      * Execute the console command.
      *
-     * @param GitRepository $repository
-     * @param ChangelogRepository $changelogRepository
+     * @param Repository $repository
      * @return void
      *
      * @throws DirtyWorkingTreeException
@@ -62,67 +60,109 @@ class DeployCommand extends Command
      * @throws InvalidGitReferenceException
      * @throws ConnectionRefusedException
      */
-    public function handle(
-        GitRepository $gitRepository,
-        CmdRepository $cmdRepository)
+    public function handle(Repository $repository)
     {
-        $workingTree = $this->argument('working_tree') ?? config('goc-deploy.defaults.working_tree');
-        $deployBranch = $this->argument('deploy_branch') ?? config('goc-deploy.defaults.deploy_branch');
+        $mergeBranch = $this->argument('merge_branch') ?? config('goc-deploy.defaults.merge_branch');
         $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
-        // Merge deploy branch to main branch and tag release
-        if ($this->option('clone')) {
-            $workingTree = $this->cloneToTemp($gitRepository, $workingTree);
+        $baseDeployPath = config('goc-deploy.base_deploy_path');
+        $changelog = config('goc-deploy.changelog');
+        $messageCatalogs = config('goc-deploy.lc_message_catalogs');
+
+        $this->repository = $repository;
+
+        $deployTree = $this->initializeDeploymentWorkingTree($baseDeployPath);
+        $metadata = GitMetadata::make($deployTree, $mergeBranch, $mainBranch);
+
+        $this->outputRepositorySummary($metadata);
+        $this->outputBranchVersionSummaries($metadata);
+        $this->outputChangelog($this->parseChangelog($repository, $deployTree . '/' . $changelog));
+
+        $question = 'Please enter the tag reference for this release to staging:';
+        $releaseTag = $this->ask($question, $this->getReleaseTagSuggestion($metadata));
+
+        $question = 'Do you want to merge "%s" into "%s" and reference it with tag "%s" using the changelog above?';
+        $question = sprintf($question, $metadata->deployBranch->name, $metadata->mainBranch->name, $releaseTag);
+
+        if (!$this->confirm($question)) {
+            $this->warn('Aborted by user.');
+            $this->newLine();
+            exit(0);
         }
 
-        $metadata = GitMetadata::make($workingTree, $deployBranch, $mainBranch);
-
-        $this->outputRepositorySummary($metadata)->outputBranchVersionSummaries($metadata);
-        $this->outputChangelog($this->parseChangelog($cmdRepository, config('goc-deploy.changelog')));
-
-        /*
-       $question = 'Please enter the tag reference for this release to staging:';
-       $releaseTag = $this->ask($question, $this->getReleaseTagSuggestion($metadata));
-
-       $question = 'Do you want to merge "%s" into "%s" and reference it with tag "%s" using the changelog above?';
-       $question = sprintf($question, $metadata->deployBranch->name, $metadata->mainBranch->name, $releaseTag);
-
-       if (!$this->confirm($question)) {
-           $this->warn('Aborted by user.');
-           $this->newLine();
-           exit(0);
-       }
-       */
-
-        $releaseTag = $this->getReleaseTagSuggestion($metadata);
-
-        $this->compileMessageCatalogs($cmdRepository, config('goc-deploy.lc_message_catalogs'));
+        $this->compileMessageCatalogs($repository, $messageCatalogs);
 
         $this->line('Installing non-development composer dependencies...');
-        $cmdRepository->composerInstall($workingTree, false);
+        $repository->composerInstall($workingTree, false);
         $this->info('done.');
-
-
-
 
         dd(__METHOD__);
 
-//        $output = $this->execute('msgfmt ./resources/i18n/en_CA/LC_MESSAGES/messages.po -o ./resources/i18n/en_CA/LC_MESSAGES/messages.mo', $workingTree);
-//        print $output . "\n";
+        $repository->package($workingTree);
 
-
-        $gitRepository->package($workingTree);
-
-        dd($this->metadata);
-
-
+        dd($metadata);
     }
+
+    /**
+     * @param string $baseDeployPath
+     * @return string The $deployTree
+     */
+    public function initializeDeploymentWorkingTree(string $baseDeployPath): string
+    {
+        $this->newLine();
+        $this->line('Initializing local deployment working tree.');
+
+        $repositoryUrl = $this->repository->getRemoteUrl(base_path());
+        $repositoryName = basename($repositoryUrl, '.git');
+
+        $baseDeployPath = $this->repository->makeDirectories($baseDeployPath);
+        $deployTree = $baseDeployPath . DIRECTORY_SEPARATOR . $repositoryName;
+
+        try {
+            $deployTreeRepositoryUrl = $this->repository->getRemoteUrl($deployTree);
+
+            if($deployTreeRepositoryUrl != $repositoryUrl) {
+                $this->newLine();
+                $this->warn('The deployment working tree "' . $deployTree . '" contains the wrong repository.');
+
+                if($this->confirm('Would you like to delete "' . $deployTree . '"?', true)) {
+                    $this->repository->delete($deployTree);
+                    throw new ProcessException('Invalid Repository');
+                } else {
+                    $this->newLine();
+                    $this->info('Aborted by user.');
+                    $this->newLine();
+                }
+            }
+        } catch(ProcessException $e) {
+            $this->line('Cloning "' . $repositoryUrl . '" to "' . $deployTree . '".');
+            $this->repository->clone($repositoryUrl, $baseDeployPath);
+        }
+
+        $this->info('Fetching references and metadata from origin.');
+        $this->repository->refreshOriginMetadata($deployTree);
+
+        $this->info('Validating working tree.');
+        $this->repository->validateWorkingTree($deployTree);
+
+        $this->newLine();
+
+        return $deployTree;
+    }
+
+
+
+
+
+
+
+
 
     /**
      * Extrapolates the remote git URL from the specified working tree and clones the repository to a temporary
      * folder.
      *
-     * @param GitRepository $repository
+     * @param Repository $repository
      * @param string $workingTree
      * @return string The temporary working tree of the remote repository.
      *
@@ -134,7 +174,7 @@ class DeployCommand extends Command
      * @throws InvalidPathException
      * @throws ProcessException
      */
-    protected function cloneToTemp(GitRepository $repository, string $workingTree): string
+    protected function cloneToTemp(Repository $repository, string $workingTree): string
     {
         $url = $repository->getRemoteUrl($workingTree);
 
@@ -151,13 +191,13 @@ class DeployCommand extends Command
     }
 
     /**
-     * @param CmdRepository $cmdRepository
+     * @param Repository $repository
      * @param string $changelog Fully qualified path.
      * @return array
      */
-    public function parseChangelog(CmdRepository $cmdRepository, string $changelog): array
+    public function parseChangelog(Repository $repository, string $changelog): array
     {
-        $lines = $cmdRepository->readFile($changelog, 4096);
+        $lines = $repository->readFile($changelog, 4096);
         $currentChangeLogEntries = [];
 
         foreach ($lines as $line) {
@@ -279,7 +319,7 @@ class DeployCommand extends Command
     }
 
     /**
-     * @param GitRepository $repository
+     * @param Repository $repository
      * @param GitMetadata $metadata
      * @param string $releaseTag
      * @param array $changelogMessage
@@ -294,10 +334,10 @@ class DeployCommand extends Command
      * @throws ConnectionRefusedException
      */
     protected function mergeBranch(
-        GitRepository $repository,
-        GitMetadata   $metadata,
-        string        $releaseTag,
-        array         $changelogMessage): bool
+        Repository  $repository,
+        GitMetadata $metadata,
+        string      $releaseTag,
+        array       $changelogMessage): bool
     {
         $repository->checkoutBranch($metadata->deployBranch->name, $metadata->workingTree);
         $repository->pullRemote($metadata->workingTree);
@@ -329,18 +369,18 @@ class DeployCommand extends Command
     }
 
     /**
-     * @param CmdRepository $cmdRepository
+     * @param Repository $repository
      * @param array|null $messageCatalog
      * @return $this
      *
      * @throws CompileTranslationException
      */
-    public function compileMessageCatalogs(CmdRepository $cmdRepository, ?array $messageCatalogs): self
+    public function compileMessageCatalogs(Repository $repository, ?array $messageCatalogs): self
     {
         if ($messageCatalogs) {
             foreach ($messageCatalogs as $messageCatalog) {
                 $this->info('Compiling message catalog "' . $messageCatalog . '"....');
-                $cmdRepository->compileMessageCatalog($messageCatalog);
+                $repository->compileMessageCatalog($messageCatalog);
             }
         }
 

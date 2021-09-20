@@ -3,32 +3,36 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Application Name
+    | The  URL of the remote git directory of this project.
     |--------------------------------------------------------------------------
-    | GOC Deploy is a non-reusable, workflow-specific package.
     */
-    'name' => 'GOC Deploy',
+//    'repository_url' => '',
 
     /*
     |--------------------------------------------------------------------------
-    | The default URL of the remote git directory that is associated with this
-    | project.
+    | The deployment directory where this application's working tree exists in
+    | a subdirectory. If the working tree subdirectory does not exist, it will
+    | be cloned from the remote git repository.
+    |
+    |Note: The local working tree of the application cannot be the same as the
+    |      local working tree where this command is executed from.
     |--------------------------------------------------------------------------
     */
-    //'repository_url' => env('GOC_DEPLOY_DEFAULT_REPOSITORY_URL', NULL),
+    'base_deploy_path' => '/var/www/deploy',
 
     /*
     |--------------------------------------------------------------------------
-    | The default path to the CHANGELOG file where the message associated with
-    | the tagged release will be extracted.
+    | Recommended. The relative path to the CHANGELOG file describing releases
+    | from the repository root. If defined, the first paragraph delimited by
+    | a empty line is used as the git tag message for the release.
     |--------------------------------------------------------------------------
     */
-    'changelog' => base_path() . '/CHANGELOG',
+    'changelog' => './src/CHANGELOG',
 
     /*
     |--------------------------------------------------------------------------
-    | Optional. An array of localized message catalogs that can be compiled to
-    | binary format via msgfmt (e.g. gettext).
+    | Optional. An array of localized message catalogs to be compiled via
+    | msgfmt (e.g. gettext, symfony).
     |--------------------------------------------------------------------------
     */
     'lc_message_catalogs' => [
@@ -44,29 +48,11 @@ return [
     'defaults' => [
         /*
         |--------------------------------------------------------------------------
-        | The default path to the local git directory that is associated with a
-        | repository.
-        |
-        | DEPRECATED
-        |--------------------------------------------------------------------------
-        */
-        'working_tree' => env('GOC_DEPLOY_DEFAULT_WORKING_TREE', base_path()),
-
-        /*
-        |--------------------------------------------------------------------------
-        | The default URL of the remote git directory that is associated with this
-        | project.
-        |--------------------------------------------------------------------------
-        */
-        'repository_url' => env('GOC_DEPLOY_DEFAULT_REPOSITORY_URL', NULL),
-
-        /*
-        |--------------------------------------------------------------------------
         | The default git branch containing the development code that should be
         | deployed to a staging or production environments.
         |--------------------------------------------------------------------------
         */
-        'deploy_branch' => env('GOC_DEPLOY_DEFAULT_DEPLOY_BRANCH', 'develop'),
+        'merge_branch' => 'develop',
 
         /*
         |--------------------------------------------------------------------------
@@ -74,8 +60,6 @@ return [
         | merged into during the deployment process.
         |--------------------------------------------------------------------------
         */
-        'main_branch' => env('GOC_DEPLOY_DEFAULT_MAIN_BRANCH', 'master'),
+        'main_branch' => 'master',
     ],
-
-
 ];

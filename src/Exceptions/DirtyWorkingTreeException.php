@@ -8,8 +8,7 @@ use Throwable;
 
 class DirtyWorkingTreeException extends Exception implements ExceptionInterface
 {
-    const MESSAGE = 'ERROR: Resolve the uncommitted/untracked changes in your working branch ' .
-                           'or try again with the "--clone" option.';
+    const MESSAGE = 'ERROR: Resolve the uncommitted/untracked changes in your working branch.';
     const CODE = 0;
 
     /**

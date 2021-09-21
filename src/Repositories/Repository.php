@@ -2,17 +2,74 @@
 
 namespace Marcth\GocDeploy\Repositories;
 
-use Marcth\GocDeploy\Exceptions\ConnectionRefusedException;
 use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\GitMergeConflictException;
-use Marcth\GocDeploy\Exceptions\InvalidGitBranchException;
-use Marcth\GocDeploy\Exceptions\InvalidGitReferenceException;
-use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
 
 class Repository extends BaseRepository
 {
+
+    /**
+     * @param string $workingTree
+     * @param string $tarball
+     * @return string
+     * @throws ProcessException
+     */
+    public function package(string $workingTree, string $tarball): string
+    {
+
+        $output = $this->execute(implode(' ', [
+            'tar',
+            '--exclude-vcs',
+            '--exclude=bower_components',
+            '--exclude=node_modules',
+            '--exclude=storage',
+            '--exclude=tests',
+            '--exclude=.idea',
+            '--exclude=.editorconfig',
+            '--exclude=.env',
+            '--exclude=scripts',
+            '--exclude=bootstrap/cache/*',
+            '--directory=' . $workingTree,
+            '-zvcf',
+            $tarball,
+            '.',
+        ]), '/var/www');
+
+        return $output;
+    }
+
+
+    /**
+     * Attempts to abort the current conflict resolution process and reconstruct the pre-merge state.
+     *
+     * @param string $workingTree
+     * @return $this
+     * @throws ProcessException
+     */
+    public function abortMergeBranch(string $workingTree): self
+    {
+        $this->process('git merge --abort', $workingTree);
+
+        return $this;
+    }
+
+    /**
+     * Switches branches or restore working tree files.
+     *
+     * @param string $branch
+     * @param string $workingTree
+     * @return $this
+     * @throws ProcessException
+     */
+    public function checkoutBranch(string $branch, string $workingTree): self
+    {
+        $this->process('git -c advice.detachedHead=false checkout --quiet ' . $branch, $workingTree);
+
+        return $this;
+    }
+
     /**
      * Clones the remote repository to the specified $directory.
      *
@@ -29,6 +86,42 @@ class Repository extends BaseRepository
     }
 
     /**
+     * Generates binary message catalog from textual translation description.
+     *
+     * @param string $poFilename
+     * @return $this
+     */
+    public function compileMessageCatalog(string $poFilename): self {
+
+        $moFilename = str_replace('.po', '.mo', $poFilename);
+
+        try {
+            $this->process(implode(' ', ['msgfmt', $poFilename, '-o', $moFilename]), getcwd());
+        } catch(ProcessException $e) {
+            throw new CompileTranslationException($e->getMessage(), $e->getCode());
+        }
+
+        return $this;
+    }
+
+    /**
+     * Downloads and installs all the libraries and dependencies outlined in the composer.json file.
+     *
+     * @param string $composerPath
+     * @param bool $includeDevPackages
+     * @return bool
+     */
+    public function composerUpdate(string $composerPath, bool $includeDevPackages): bool
+    {
+        $command = 'composer update ';
+        $command .= !$includeDevPackages ? '--no-dev --no-autoloader --no-scripts --no-progress' : '';
+
+        exec('cd ' . $composerPath . ' && '. $command, $output, $code);
+
+        return !$code;
+    }
+
+    /**
      * Issues the `rm -fr` command targetting the specified path.
      *
      * @param string $path
@@ -40,6 +133,43 @@ class Repository extends BaseRepository
         $this->process('rm -fr ' . $path, getcwd());
 
         return $this;
+    }
+
+    /**
+     * Returns the name of the current branch in the specified working tree.
+     *
+     * @param string $workingTree
+     * @return string
+     * @throws ProcessException
+     */
+    public function getCurrentBranch(string $workingTree): string
+    {
+        return basename($this->execute('git symbolic-ref -q HEAD', $workingTree));
+    }
+
+    /**
+     * Returns the referenced tag of the current branch in the specified working tree.
+     *
+     * @param string $branch
+     * @param string $workingTree
+     * @return string
+     * @throws ProcessException
+     */
+    public function getCurrentTag(string $branch, string $workingTree): string
+    {
+        $currentBranch = $this->getCurrentBranch($workingTree);
+
+        if ($currentBranch != $branch) {
+            $this->checkoutBranch($branch, $workingTree);
+        }
+
+        $tag = $this->execute('git describe', $workingTree);
+
+        if ($currentBranch != $branch) {
+            $this->checkoutBranch($currentBranch, $workingTree);
+        }
+
+        return $tag;
     }
 
     /**
@@ -82,68 +212,58 @@ class Repository extends BaseRepository
     }
 
     /**
-     * Executes the `git fetch origin` command.
+     * Issues a `git merge` to join the development history of the specified $mergeBranch into the current working
+     * branch.
      *
+     * @param string $mergeBranch
      * @param string $workingTree
      * @return $this
+     * @throws GitMergeConflictException
      * @throws ProcessException
      */
-    public function refreshOriginMetadata(string $workingTree): self
+    public function mergeBranch(string $mergeBranch, string $workingTree): self
     {
-        $this->process('git fetch origin', $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * Ensures there are no differences between the specified working tree and remote repository (including untacked
-     * files).
-     *
-     * @param string $workingTree
-     * @return $this
-     * @throws DirtyWorkingTreeException
-     * @throws ProcessException
-     */
-    public function validateWorkingTree(string $workingTree): self
-    {
-        $process = $this->process('git status --porcelain', $workingTree);
-
-        if (trim($process->getOutput())) {
-            throw new DirtyWorkingTreeException();
+        try {
+            $this->process('git merge --no-ff --no-edit ' . $mergeBranch, $workingTree);
+        } catch (ProcessFailedException $e) {
+            throw new GitMergeConflictException(null, null, $e);
         }
 
         return $this;
     }
 
+    /**
+     * @param string $packageJsonPath
+     * @return string
+     * @todo  No error handling
+     */
+    public function npmInstall(string $packageJsonPath): bool
+    {
+        $command = 'cd ' . $packageJsonPath . ' && npm install';
+        exec($command, $output, $code);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        return !$code;
+    }
 
     /**
+     * @param string $packageJsonPath
+     * @param bool $productionEnv
+     * @return bool
+     * @todo  No error handling
+     */
+    public function npmRun(string $packageJsonPath, bool $productionEnv=false): string
+    {
+        $command = $productionEnv ? 'npm run development' : 'npm run production';
+        $command = 'cd ' . $packageJsonPath . ' && ' . $command;
+
+        exec($command, $output, $code);
+
+        return !$code;
+    }
+
+    /**
+     * Returns the directory name of the git URL.
+     *
      * @param string $url
      * @return string
      */
@@ -153,161 +273,8 @@ class Repository extends BaseRepository
     }
 
     /**
-     * @param string $workingTree
-     * @return $this
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     * @throws ConnectionRefusedException
-     */
-    public function pullRemote(string $workingTree): self
-    {
-        $this->process('git pull', $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * @param string $deployBranch
-     * @param string $workingTree
-     * @return $this
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     * @throws ConnectionRefusedException
-     */
-    public function mergeBranch(string $deployBranch, string $workingTree): self
-    {
-        $this->process('git merge --no-ff --no-edit ' . $deployBranch, $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * @param string $workingTree
-     * @return $this
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     * @throws ConnectionRefusedException
-     */
-    public function abortMergeBranch(string $workingTree): self
-    {
-        $this->process('git merge --abort', $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * @param string $workingTree
-     * @return $this
-     * @throws ConnectionRefusedException
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     */
-    public function pushToRemote(string $workingTree): self
-    {
-        $this->process('git push', $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * @param string $workingTree
-     * @return $this
-     * @throws ConnectionRefusedException
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     */
-    public function pushTagsToRemote(string $workingTree): self
-    {
-        $this->process('git push --tags -f', $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * @param string $releaseTag
-     * @param string $workingTree
-     * @param string $changelogMessage
-     * @return $this
-     * @throws ConnectionRefusedException
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     */
-    public function tagBranch(string $releaseTag, string $workingTree, string $changelogMessage): self
-    {
-        $this->process(['git', 'tag', '-f', '-a', $releaseTag, '-m', $changelogMessage], $workingTree);
-
-        return $this;
-    }
-
-    /**
-     * @param string $workingTree
-     * @return string
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     */
-    public function getCurrentBranch(string $workingTree): string
-    {
-        return basename($this->execute('git symbolic-ref -q HEAD', $workingTree));
-    }
-
-    /**
-     * @param string $branch
-     * @param string $workingTree
-     * @return string
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     * @throws ConnectionRefusedException
-     */
-    public function getCurrentTag(string $branch, string $workingTree): string
-    {
-        $currentBranch = $this->getCurrentBranch($workingTree);
-
-        if ($currentBranch != $branch) {
-            $this->checkoutBranch($branch, $workingTree);
-        }
-
-        $tag = $this->execute('git describe', $workingTree);
-
-        if ($currentBranch != $branch) {
-            $this->checkoutBranch($currentBranch, $workingTree);
-        }
-
-        return $tag;
-    }
-
-    /**
+     * Attempts to parse the semantic version details and metadata from the specified $releaseTag.
+     *
      * @param string $releaseTag
      * @return array
      */
@@ -350,89 +317,37 @@ class Repository extends BaseRepository
         ];
     }
 
-
-
     /**
-     * @param string $branch
+     * Issues the `git pull` command on the specified working tree.
+     *
      * @param string $workingTree
-     * @return GitBaseRepository
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
+     * @return $this
      * @throws ProcessException
-     * @throws ConnectionRefusedException
      */
-    public function checkoutBranch(string $branch, string $workingTree): self
+    public function pullFromRemote(string $workingTree): self
     {
-        $this->process('git -c advice.detachedHead=false checkout --quiet ' . $branch, $workingTree);
+        $this->process('git pull', $workingTree);
 
         return $this;
     }
 
-    public function package(string $workingTree)
-    {
-        $output = $this->execute('composer install --optimize-autoloader --no-dev', $workingTree);
-        print $output . "\n";
-//
-//        $output = $this->execute('bower install', $workingTree);
-//        print $output . "\n";
-//
-//        $output = $this->execute('npm install', $workingTree);
-//        print $output . "\n";
-//
-//        $output = $this->execute('npm run production', $workingTree);
-//        print $output . "\n";
-
-
-        $output = $this->execute(implode(' ', [
-            'tar',
-            '--exclude-vcs',
-            '--exclude=bower_components',
-            '--exclude=node_modules',
-            '--exclude=storage',
-            '--exclude=tests',
-            '--exclude=.idea',
-            '--exclude=.editorconfig',
-            '--exclude=.env',
-            '--exclude=scripts',
-            '--exclude=bootstrap/cache/*',
-            '--directory=' . $workingTree,
-            '-zvcf',
-            'passport-src_test.tar.gz',
-            '.',
-        ]), '/var/www');
-
-        print $output . "\n";
-
-        $output = $this->execute('composer install', $workingTree);
-        print $output . "\n";
-    }
-
     /**
-     * @param string $poFilename
-     * @return bool
+     * Issues the `git push` command and optionally a `git push --tags` when $includeTags is true.
      *
-     * @throws CompileTranslationException
-     * @throws \Marcth\GocDeploy\Exceptions\ConnectionRefusedException
-     * @throws \Marcth\GocDeploy\Exceptions\GitMergeConflictException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidGitBranchException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidGitReferenceException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidPathException
+     * @param string $workingTree
+     * @param bool $includeTags
+     * @return $this
+     * @throws ProcessException
      */
-    public function compileMessageCatalog(string $poFilename): bool {
+    public function pushToRemote(string $workingTree, bool $includeTags=false): self
+    {
+        $this->process('git push', $workingTree);
 
-        $moFilename = str_replace('.po', '.mo', $poFilename);
-
-        try {
-            $this->process(implode(' ', ['msgfmt', $poFilename, '-o', $moFilename]), getcwd());
-        } catch(ProcessException $e) {
-            throw new CompileTranslationException($e->getMessage(), $e->getCode());
+        if($includeTags) {
+            $this->process('git push --tags', $workingTree);
         }
 
-        return true;
+        return $this;
     }
 
     /**
@@ -459,28 +374,52 @@ class Repository extends BaseRepository
     }
 
     /**
-     * The install command reads the composer. lock file from the current directory, processes it, and downloads and installs all the libraries and dependencies outlined in that file.
-     * @param string $workingTree
-     * @param bool $includeDevPackages
-     * @return $this
+     * Executes the `git fetch origin` command.
      *
+     * @param string $workingTree
+     * @return $this
      * @throws ProcessException
-     * @throws \Marcth\GocDeploy\Exceptions\ConnectionRefusedException
-     * @throws \Marcth\GocDeploy\Exceptions\GitMergeConflictException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidGitBranchException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidGitReferenceException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException
-     * @throws \Marcth\GocDeploy\Exceptions\InvalidPathException
      */
-    public function composerInstall(string $workingTree, bool $includeDevPackages): self
+    public function refreshOriginMetadata(string $workingTree): self
     {
-        $command = 'composer install ';
-        $command .= !$includeDevPackages ? '--no-dev --no-autoloader --no-scripts --no-progress' : '';
+        $this->process('git fetch origin', $workingTree);
 
-        exec('cd ' . $workingTree . ' && '. $command, $output, $code);
-        print $code . ":" . $output;
-        dd(__METHOD__);
+        return $this;
+    }
+
+    /**
+     * Tags the current branch in the $workingTree with the specified tag and changelog message.
+     *
+     * @param string $releaseTag
+     * @param string $workingTree
+     * @param string $changelogMessage
+     * @return $this
+     * @throws ProcessException
+     */
+    public function tagBranch(string $releaseTag, string $workingTree, string $changelogMessage): self
+    {
+        $this->process(['git', 'tag', '-f', '-a', $releaseTag, '-m', $changelogMessage], $workingTree);
+
+        return $this;
+    }
+
+    /**
+     * Ensures there are no differences between the specified working tree and remote repository (including untacked
+     * files).
+     *
+     * @param string $workingTree
+     * @return $this
+     * @throws DirtyWorkingTreeException
+     * @throws ProcessException
+     */
+    public function validateWorkingTree(string $workingTree): self
+    {
+        $process = $this->process('git status --porcelain', $workingTree);
+
+        if (trim($process->getOutput())) {
+            throw new DirtyWorkingTreeException();
+        }
+
         return $this;
     }
 }
-

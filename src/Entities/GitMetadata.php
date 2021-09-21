@@ -15,14 +15,14 @@ class GitMetadata extends Entity
         'name' => null,
         'url' => null,
         'workingTree' => null,
-        'deployBranch' => null,
+        'mergeBranch' => null,
         'mainBranch' => null,
     ];
 
 
     /**
      * @param string $workingTree
-     * @param string $deployBranch
+     * @param string $mergeBranch
      * @param string $mainBranch
      * @return GitMetadata
      * @throws InvalidGitRepositoryException
@@ -30,16 +30,16 @@ class GitMetadata extends Entity
      * @throws ProcessException
      * @throws DirtyWorkingTreeException
      */
-    public static function make(string $workingTree, string $deployBranch, string $mainBranch): self
+    public static function make(string $workingTree, string $mergeBranch, string $mainBranch): self
     {
         $repository = new Repository();
 
         $instance = new GitMetadata([
             'url' => $repository->getRemoteUrl($workingTree),
             'workingTree' => $repository->validateWorkingTree($workingTree)->getLocalRootPath($workingTree),
-            'deployBranch' => new GitBranch([
-                'name' => $deployBranch,
-                'tag' => $repository->getCurrentTag($deployBranch, $workingTree),
+            'mergeBranch' => new GitBranch([
+                'name' => $mergeBranch,
+                'tag' => $repository->getCurrentTag($mergeBranch, $workingTree),
             ]),
             'mainBranch' => new GitBranch([
                 'name' => $mainBranch,
@@ -48,7 +48,7 @@ class GitMetadata extends Entity
         ]);
 
         $instance->name = basename($instance->url, '.git');
-        $instance->deployBranch->version = new Version($repository->parseVersionDetailsFromTag($instance->deployBranch->tag));
+        $instance->mergeBranch->version = new Version($repository->parseVersionDetailsFromTag($instance->mergeBranch->tag));
         $instance->mainBranch->version = new Version($repository->parseVersionDetailsFromTag($instance->mainBranch->tag));
 
         return $instance;

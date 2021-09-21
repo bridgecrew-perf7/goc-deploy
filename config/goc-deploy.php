@@ -22,8 +22,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Recommended. The relative path to the CHANGELOG file describing releases
-    | from the repository root. If defined, the first paragraph delimited by
+    | The relative path to the composer.json file from the repository root.
+    |--------------------------------------------------------------------------
+    */
+    'composer_json_path' => './src',
+
+    /*
+    |--------------------------------------------------------------------------
+    | The relative path to the CHANGELOG file describing releases from the
+    | repository root. If defined, the first paragraph delimited by
     | a empty line is used as the git tag message for the release.
     |--------------------------------------------------------------------------
     */

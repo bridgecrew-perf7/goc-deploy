@@ -3,8 +3,8 @@
 namespace Marcth\GocDeploy\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Marcth\GocDeploy\Entities\GitMetadata;
-use Marcth\GocDeploy\Exceptions\CompileTranslationException;
 use Marcth\GocDeploy\Exceptions\ConnectionRefusedException;
 use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\GitMergeConflictException;
@@ -14,7 +14,6 @@ use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
 use Marcth\GocDeploy\Repositories\Repository;
-use Symfony\Component\Process\Exception\ProcessFailedException;
 
 /**
  * Requires git
@@ -62,238 +61,131 @@ class DeployCommand extends Command
      */
     public function handle(Repository $repository)
     {
+        $this->repository = $repository;
+
         $mergeBranch = $this->argument('merge_branch') ?? config('goc-deploy.defaults.merge_branch');
         $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
-        $baseDeployPath = config('goc-deploy.base_deploy_path');
-        $changelog = config('goc-deploy.changelog');
-        $messageCatalogs = config('goc-deploy.lc_message_catalogs');
-
-        $this->repository = $repository;
-
-        $deployTree = $this->initializeDeploymentWorkingTree($baseDeployPath);
-        $metadata = GitMetadata::make($deployTree, $mergeBranch, $mainBranch);
+        $workingTree = $this->initializeDeploymentWorkingTree(config('goc-deploy.base_deploy_path'));
+        $metadata = GitMetadata::make($workingTree, $mergeBranch, $mainBranch);
+        $changelog = $this->parseChangelog($metadata->workingTree . '/' . config('goc-deploy.changelog'));
+        $composerPath = $metadata->workingTree . DIRECTORY_SEPARATOR . config('goc-deploy.composer_json_path');
 
         $this->outputRepositorySummary($metadata);
         $this->outputBranchVersionSummaries($metadata);
-        $this->outputChangelog($this->parseChangelog($repository, $deployTree . '/' . $changelog));
+        $this->outputChangelog($changelog);
 
+        /*
         $question = 'Please enter the tag reference for this release to staging:';
         $releaseTag = $this->ask($question, $this->getReleaseTagSuggestion($metadata));
 
-        $question = 'Do you want to merge "%s" into "%s" and reference it with tag "%s" using the changelog above?';
-        $question = sprintf($question, $metadata->deployBranch->name, $metadata->mainBranch->name, $releaseTag);
+             $question = 'Do you want to merge "%s" into "%s" and reference it with tag "%s" using the changelog above?';
+             $question = sprintf($question, $metadata->mergeBranch->name, $metadata->mainBranch->name, $releaseTag);
 
-        if (!$this->confirm($question)) {
-            $this->warn('Aborted by user.');
-            $this->newLine();
-            exit(0);
-        }
+             if (!$this->confirm($question)) {
+                 $this->warn('Aborted by user.');
+                 $this->newLine();
+                 exit(0);
+             }
 
-        $this->compileMessageCatalogs($repository, $messageCatalogs);
+             $this->mergeBranch($metadata, $releaseTag, $changelog);
 
-        $this->line('Installing non-development composer dependencies...');
-        $repository->composerInstall($workingTree, false);
-        $this->info('done.');
 
-        dd(__METHOD__);
+            $this->confirmVpnDisconnected();
+            $this->composerUpdate($composerPath, false);
+            $this->compileMessageCatalog(config('goc-deploy.lc_message_catalogs'));
+            $this->npmInstall($composerPath);
+            $this->npmRun($composerPath, true);
+         */
 
-        $repository->package($workingTree);
+        $releaseTag = '1.25.0-rc.2';
+        $this->package($metadata, $composerPath, config('goc-deploy.base_deploy_path'), $releaseTag);
 
-        dd($metadata);
-    }
-
-    /**
-     * @param string $baseDeployPath
-     * @return string The $deployTree
-     */
-    public function initializeDeploymentWorkingTree(string $baseDeployPath): string
-    {
-        $this->newLine();
-        $this->line('Initializing local deployment working tree.');
-
-        $repositoryUrl = $this->repository->getRemoteUrl(base_path());
-        $repositoryName = basename($repositoryUrl, '.git');
-
-        $baseDeployPath = $this->repository->makeDirectories($baseDeployPath);
-        $deployTree = $baseDeployPath . DIRECTORY_SEPARATOR . $repositoryName;
-
-        try {
-            $deployTreeRepositoryUrl = $this->repository->getRemoteUrl($deployTree);
-
-            if($deployTreeRepositoryUrl != $repositoryUrl) {
-                $this->newLine();
-                $this->warn('The deployment working tree "' . $deployTree . '" contains the wrong repository.');
-
-                if($this->confirm('Would you like to delete "' . $deployTree . '"?', true)) {
-                    $this->repository->delete($deployTree);
-                    throw new ProcessException('Invalid Repository');
-                } else {
-                    $this->newLine();
-                    $this->info('Aborted by user.');
-                    $this->newLine();
-                }
-            }
-        } catch(ProcessException $e) {
-            $this->line('Cloning "' . $repositoryUrl . '" to "' . $deployTree . '".');
-            $this->repository->clone($repositoryUrl, $baseDeployPath);
-        }
-
-        $this->info('Fetching references and metadata from origin.');
-        $this->repository->refreshOriginMetadata($deployTree);
-
-        $this->info('Validating working tree.');
-        $this->repository->validateWorkingTree($deployTree);
-
-        $this->newLine();
-
-        return $deployTree;
+        $this->info('Complete');
+        exit(0);
     }
 
 
-
-
-
-
-
-
-
     /**
-     * Extrapolates the remote git URL from the specified working tree and clones the repository to a temporary
-     * folder.
-     *
-     * @param Repository $repository
+     * @param string $branch
      * @param string $workingTree
-     * @return string The temporary working tree of the remote repository.
-     *
-     * @throws ConnectionRefusedException
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
+     * @return $this
      * @throws ProcessException
      */
-    protected function cloneToTemp(Repository $repository, string $workingTree): string
+    protected function checkoutBranch(string $branch, string $workingTree): self
     {
-        $url = $repository->getRemoteUrl($workingTree);
+        $this->info('Checking out "' . $branch . '" branch.');
+        $this->repository->checkoutBranch($branch, $workingTree);
 
-        $this->newLine();
-        $this->line('Cloning "' . $url . '" to a temporary directory.');
-        $this->line('This may take a few moments...');
-
-        $workingTree = $repository->cloneToTemp($url);
-
-        $this->info('The repository has been cloned to "' . $workingTree . '".');
-        $this->newLine();
-
-        return $workingTree;
+        return $this;
     }
 
     /**
-     * @param Repository $repository
-     * @param string $changelog Fully qualified path.
-     * @return array
+     * Generates binary message catalog from textual translation description.
+     *
+     * @param array|null $messageCatalogs
      */
-    public function parseChangelog(Repository $repository, string $changelog): array
+    protected function compileMessageCatalog(?array $messageCatalogs)
     {
-        $lines = $repository->readFile($changelog, 4096);
-        $currentChangeLogEntries = [];
-
-        foreach ($lines as $line) {
-            if (!trim($line)) {
-                break;
+        if ($messageCatalogs) {
+            foreach ($messageCatalogs as $messageCatalog) {
+                $this->info('Compiling message catalog "' . $messageCatalog . '".');
+                $this->repository->compileMessageCatalog($messageCatalog);
             }
+        }
+    }
 
-            $currentChangeLogEntries[] = $line;
+    /**
+     * Downloads and installs all the libraries and dependencies outlined in the composer.lock file.
+     *
+     * @param string $composerPath
+     * @param bool $includeDevPackages
+     * @return $this
+     */
+    protected function composerUpdate(string $composerPath, bool $includeDevPackages): self
+    {
+        $disconnectedFromVpn = false;
+
+        while(!$disconnectedFromVpn) {
+            $this->info('Installing non-development composer dependencies from composer.json.');
+            $disconnectedFromVpn = $this->repository->composerUpdate($composerPath, $includeDevPackages);
+
+            if (!$disconnectedFromVpn) {
+                $this->confirmVpnDisconnected();
+            }
         }
 
-        return $currentChangeLogEntries;
-    }
-
-
-    /**
-     * Outputs the git repository summary details to the console.
-     *
-     * @param GitMetadata $metadata
-     * @return $this
-     */
-    protected function outputRepositorySummary(GitMetadata $metadata): self
-    {
-        $this->newLine();
-        $this->info('Repository Summary');
-        $this->table([], [
-            ['Repository Name', $metadata->name],
-            ['Repository URL', $metadata->url],
-            ['Working Tree', $metadata->workingTree],
-            [
-                'Deploy Branch (Tag)',
-                ($metadata->deployBranch->name ?? null) . ' (' . ($metadata->deployBranch->tag ?? null) . ')'
-            ],
-            [
-                'Main Branch (Tag)',
-                ($metadata->mainBranch->name ?? null) . ' (' . ($metadata->mainBranch->tag ?? null) . ')'
-            ],
-        ]);
-
         return $this;
     }
 
     /**
-     * Outputs the deployment and main branches' version summaries to the console.
+     * Prompts the user to ensure Windows is connected to "vpn.ssc.gc.ca".
      *
-     * @param GitMetadata $metadata
-     * @return $this
+     * @return bool
      */
-    protected function outputBranchVersionSummaries(GitMetadata $metadata): self
+    protected function confirmVpnConnected(): bool
     {
-        $this->newLine();
-        $this->info('Branch Version Summaries');
-        $this->table(['Branch', 'Major', 'Minor', 'Patch', 'Type', 'Descriptor', 'Revision'],
-            [
-                [
-                    $metadata->deployBranch->name . ' (Deploy)',
-                    $metadata->deployBranch->version->major,
-                    $metadata->deployBranch->version->minor,
-                    $metadata->deployBranch->version->patch,
-                    $metadata->deployBranch->version->type,
-                    $metadata->deployBranch->version->descriptor,
-                    $metadata->deployBranch->version->revision,
-                ], [
-                $metadata->mainBranch->name . ' (Main)',
-                $metadata->mainBranch->version->major,
-                $metadata->mainBranch->version->minor,
-                $metadata->mainBranch->version->patch,
-                $metadata->mainBranch->version->type,
-                $metadata->mainBranch->version->descriptor,
-                $metadata->mainBranch->version->revision,
-            ]
-            ]);
+        while(!$this->confirm(
+            'Please ensure Windows is connected to "vpn.ssc.gc.ca" before continuing.',
+            true
+        ));
 
-        $this->newLine();
-
-        return $this;
+        return true;
     }
 
     /**
-     * Outputs the contents of the specified $changelog array to the console.
+     * Prompts the user to ensure Windows is disconnected from "vpn.ssc.gc.ca".
      *
-     * @param array $changelog
-     * @return $this
+     * @return bool
      */
-    protected function outputChangelog(array $changelog): self
+    protected function confirmVpnDisconnected(): bool
     {
-        $tableData = [];
+        while(!$this->confirm(
+            'Please ensure Windows is disconnected from "vpn.ssc.gc.ca" before continuing.',
+            true
+        ));
 
-        foreach ($changelog as $line) {
-            $tableData[][] = $line;
-        }
-
-        $this->info('Changelog for Release');
-        $this->table([], $tableData);
-        $this->newLine();
-
-        return $this;
+        return true;
     }
 
     /**
@@ -319,48 +211,99 @@ class DeployCommand extends Command
     }
 
     /**
-     * @param Repository $repository
-     * @param GitMetadata $metadata
-     * @param string $releaseTag
-     * @param array $changelogMessage
-     * @return bool
-     *
-     * @throws GitMergeConflictException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws InvalidGitRepositoryException
-     * @throws InvalidPathException
-     * @throws ProcessException
-     * @throws ConnectionRefusedException
+     * @param string $baseDeployPath
+     * @return string
+     * @todo  Document
      */
-    protected function mergeBranch(
-        Repository  $repository,
-        GitMetadata $metadata,
-        string      $releaseTag,
-        array       $changelogMessage): bool
+    public function initializeDeploymentWorkingTree(string $baseDeployPath): string
     {
-        $repository->checkoutBranch($metadata->deployBranch->name, $metadata->workingTree);
-        $repository->pullRemote($metadata->workingTree);
+        $this->newLine();
+        $this->line('Initializing local deployment working tree.');
 
-        $repository->checkoutBranch($metadata->mainBranch->name, $metadata->workingTree);
-        $repository->pullRemote($metadata->workingTree);
+        $repositoryUrl = $this->repository->getRemoteUrl(base_path());
+        $repositoryName = $this->repository->parseNameFromUrl($repositoryUrl);
+
+        $baseDeployPath = $this->repository->makeDirectories($baseDeployPath);
+        $deploymentPath = $baseDeployPath . DIRECTORY_SEPARATOR . $repositoryName;
 
         try {
-            $repository->mergeBranch($metadata->deployBranch->name, $metadata->workingTree);
-            $repository->tagBranch($releaseTag, $metadata->workingTree, implode("\n", $changelogMessage));
+            $deploymentPathRepositoryUrl = $this->repository->getRemoteUrl($deploymentPath);
 
-            $repository->pushToRemote($metadata->workingTree);
-            $repository->pushTagsToRemote($metadata->workingTree);
+            if($deploymentPathRepositoryUrl != $repositoryUrl) {
+                $this->newLine();
+                $this->warn('The deployment working tree "' . $deploymentPath . '" contains the wrong repository.');
 
-            $repository->checkoutBranch($metadata->deployBranch->name, $metadata->workingTree);
-            $repository->pullRemote($metadata->workingTree);
+                if($this->confirm('Would you like to delete "' . $deploymentPath . '"?', true)) {
+                    $this->repository->delete($deploymentPath);
+                    throw new ProcessException('Invalid Repository');
+                } else {
+                    $this->newLine();
+                    $this->info('Aborted by user.');
+                    $this->newLine();
+                }
+            }
+        } catch(ProcessException $e) {
+            $this->info('Cloning "' . $repositoryUrl . '" to "' . $deploymentPath . '".');
+            $this->repository->clone($repositoryUrl, $baseDeployPath);
+        }
 
-            $repository->mergeBranch($metadata->mainBranch->name, $metadata->workingTree);
-            $repository->pushToRemote($metadata->workingTree);
+        $this->info('Fetching references and metadata from origin.');
+        $this->repository->refreshOriginMetadata($deploymentPath);
+
+        $this->info('Validating working tree.');
+        $this->repository->validateWorkingTree($deploymentPath);
+
+        $this->newLine();
+
+        return realpath($deploymentPath);
+    }
+
+    /**
+     *
+     *
+     * @param GitMetadata $metadata
+     * @param string $releaseTag
+     * @param string|null $changelog
+     * @return bool
+     * @throws GitMergeConflictException
+     * @throws ProcessException
+     */
+    protected function mergeBranch(GitMetadata $metadata, string $releaseTag, ?string $changelog): bool
+    {
+        $this->checkoutBranch($metadata->mergeBranch->name, $metadata->workingTree);
+        $this->pullFromRemote($metadata->workingTree);
+
+        $this->checkoutBranch($metadata->mainBranch->name, $metadata->workingTree);
+        $this->pullFromRemote($metadata->workingTree);
+
+        try {
+            $this->info(sprintf(
+                'Attempting to merge "%s" into "%s" with tag reference "%s".',
+                $metadata->mergeBranch->name,
+                $metadata->mainBranch->name,
+                $releaseTag
+            ));
+
+            $this->repository->mergeBranch($metadata->mergeBranch->name, $metadata->workingTree);
+            $this->repository->tagBranch($releaseTag, $metadata->workingTree, $changelog ?? 'N/A');
+
+            $this->info("Pushing changes to remote repository with tag reference.");
+            $this->repository->pushToRemote($metadata->workingTree, true);
+
+            $this->info(sprintf(
+                'Attempting to merge "%s" into "%s".',
+                $metadata->mainBranch->name,
+                $metadata->mergeBranch->name,
+            ));
+
+            $this->repository->checkoutBranch($metadata->mergeBranch->name, $metadata->workingTree);
+            $this->repository->mergeBranch($metadata->mainBranch->name, $metadata->workingTree);
+
+            $this->info("Pushing changes to remote repository.");
+            $this->repository->pushToRemote($metadata->workingTree, false);
         } catch (GitMergeConflictException $e) {
-            $this->warn('Aborting git merge...');
-
-            $repository->abortMergeBranch($metadata->workingTree);
+            $this->warn('A conflict occurred while performing a git merge. Attempting to abort...');
+            $this->repository->abortMergeBranch($metadata->workingTree);
 
             throw $e;
         }
@@ -368,23 +311,171 @@ class DeployCommand extends Command
         return true;
     }
 
+
     /**
-     * @param Repository $repository
-     * @param array|null $messageCatalog
-     * @return $this
-     *
-     * @throws CompileTranslationException
+     * @param string $packageJsonPath
+     * @return bool
+     * @todo  No error handling
      */
-    public function compileMessageCatalogs(Repository $repository, ?array $messageCatalogs): self
+    protected function npmInstall(string $packageJsonPath): bool
     {
-        if ($messageCatalogs) {
-            foreach ($messageCatalogs as $messageCatalog) {
-                $this->info('Compiling message catalog "' . $messageCatalog . '"....');
-                $repository->compileMessageCatalog($messageCatalog);
-            }
+        $this->info('Installing all npm modules and dependencies that are listed in package.json.');
+        return $this->repository->npmInstall($packageJsonPath);
+    }
+
+    /**
+     * Executes `npm run develop` or `npm run production` in the specified directory.
+     * @param string $packageJsonPath
+     * @param bool $productionEnv
+     * @return bool
+     * @todo  No error handling
+     */
+    protected function npmRun(string $packageJsonPath, bool $productionEnv=false): bool
+    {
+        if($productionEnv) {
+            $this->info('Compiling and minifying all production public assets.');
+        } else {
+            $this->info('Compiling all public assets including a source map.');
         }
 
+        return $this->repository->npmRun($packageJsonPath, $productionEnv);
+    }
+
+    /**
+     * Outputs the contents of the specified $changelog array to the console.
+     *
+     * @param string $changelog
+     * @return $this
+     */
+    protected function outputChangelog(string $changelog): self
+    {
+        $tableData = [];
+        $changelog = explode("\n", $changelog);
+
+        foreach ($changelog as $line) {
+            $tableData[][] = $line;
+        }
+
+        $this->info('Changelog for Release');
+        $this->table([], $tableData);
         $this->newLine();
+
+        return $this;
+    }
+
+    /**
+     * Outputs the deployment and main branches' version summaries to the console.
+     *
+     * @param GitMetadata $metadata
+     * @return $this
+     */
+    protected function outputBranchVersionSummaries(GitMetadata $metadata): self
+    {
+        $this->newLine();
+        $this->info('Branch Version Summaries');
+        $this->table(['Branch', 'Major', 'Minor', 'Patch', 'Type', 'Descriptor', 'Revision'],
+            [
+                [
+                    $metadata->mergeBranch->name . ' (Merge)',
+                    $metadata->mergeBranch->version->major,
+                    $metadata->mergeBranch->version->minor,
+                    $metadata->mergeBranch->version->patch,
+                    $metadata->mergeBranch->version->type,
+                    $metadata->mergeBranch->version->descriptor,
+                    $metadata->mergeBranch->version->revision,
+                ], [
+                $metadata->mainBranch->name . ' (Main)',
+                $metadata->mainBranch->version->major,
+                $metadata->mainBranch->version->minor,
+                $metadata->mainBranch->version->patch,
+                $metadata->mainBranch->version->type,
+                $metadata->mainBranch->version->descriptor,
+                $metadata->mainBranch->version->revision,
+            ]
+            ]);
+
+        $this->newLine();
+
+        return $this;
+    }
+
+    /**
+     * Outputs the git repository summary details to the console.
+     *
+     * @param GitMetadata $metadata
+     * @return $this
+     */
+    protected function outputRepositorySummary(GitMetadata $metadata): self
+    {
+        $this->newLine();
+        $this->info('Repository Summary');
+        $this->table([], [
+            ['Repository Name', $metadata->name],
+            ['Repository URL', $metadata->url],
+            ['Working Tree', $metadata->workingTree],
+            [
+                'Deploy Branch (Tag)',
+                ($metadata->mergeBranch->name ?? null) . ' (' . ($metadata->mergeBranch->tag ?? null) . ')'
+            ],
+            [
+                'Main Branch (Tag)',
+                ($metadata->mainBranch->name ?? null) . ' (' . ($metadata->mainBranch->tag ?? null) . ')'
+            ],
+        ]);
+
+        return $this;
+    }
+
+    public function package(GitMetadata $metadata, string $workingTree, string $destination, string $releaseTag): self
+    {
+        $tarball = $destination . DIRECTORY_SEPARATOR . sprintf(
+            '%s_%s_%s.tar.gz',
+            $metadata->name,
+            $releaseTag,
+            Carbon::now()->format('YmdHs')
+        );
+
+        $this->info('Compressing "' . $workingTree . '" into "' . $tarball . '" (This may take a few moments).');
+        $output = $this->repository->package($workingTree, $tarball);
+        $this->line('"' . $tarball . '" has been saved.');
+
+        return $this;
+    }
+
+    /**
+     * Extracts the first paragraph contained in the specified changelog file.
+     *
+     * @param string $changelog
+     * @return string
+     * @throws InvalidPathException
+     */
+    public function parseChangelog(string $changelog): string
+    {
+        $lines = $this->repository->readFile($changelog, 4096);
+        $currentChangeLogEntries = [];
+
+        foreach ($lines as $line) {
+            if (!trim($line)) {
+                break;
+            }
+
+            $currentChangeLogEntries[] = $line;
+        }
+
+        return implode("\n", $currentChangeLogEntries);
+    }
+
+    /**
+     * Pulls any changes from the remote git repository.
+     *
+     * @param string $workingTree
+     * @return $this
+     * @throws ProcessException
+     */
+    protected function pullFromRemote(string $workingTree): self
+    {
+        $this->info('Pulling changes from remote git repository.');
+        $this->repository->pullFromRemote($workingTree);
 
         return $this;
     }

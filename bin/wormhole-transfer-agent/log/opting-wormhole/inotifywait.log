@@ -1,0 +1,26 @@
+Setting up watches.
+Watches established.
+Tue Apr 27 14:50:56 UTC 2021: Discovered /transfer_queue/gcsx-src_mr-1645_2__2021-04-27.tar.gz.
+Copying /transfer_queue/gcsx-src_mr-1645_2__2021-04-27.tar.gz to 172.19.33.163:~/ingest_quarantine/gcsx-src_mr-1645_2__2021-04-27.tar.gz...
+Warning: Permanently added '172.19.33.163' (ECDSA) to the list of known hosts.
+chmod 664 ~/ingest_quarantine/gcsx-src_mr-1645_2__2021-04-27.tar.gz
+Done.
+
+Setting up watches.
+Watches established.
+Tue Apr 27 15:03:23 UTC 2021: Discovered /transfer_queue/2021_04_26_102044_update_process_in_requests_table_data.php.
+Copying /transfer_queue/2021_04_26_102044_update_process_in_requests_table_data.php to 172.19.33.163:~/ingest_quarantine/2021_04_26_102044_update_process_in_requests_table_data.php...
+chmod 664 ~/ingest_quarantine/2021_04_26_102044_update_process_in_requests_table_data.php
+Done.
+
+Setting up watches.
+Watches established.
+Tue Apr 27 15:19:31 UTC 2021: Discovered /transfer_queue/gcsx-src_mr-1645_2021-04-27.tar.gz.
+Copying /transfer_queue/gcsx-src_mr-1645_2021-04-27.tar.gz to 172.19.33.163:~/ingest_quarantine/gcsx-src_mr-1645_2021-04-27.tar.gz...
+chmod 664 ~/ingest_quarantine/gcsx-src_mr-1645_2021-04-27.tar.gz
+Done.
+
+Setting up watches.
+Watches established.
+Setting up watches.
+Watches established.

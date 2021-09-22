@@ -5,19 +5,13 @@ namespace Marcth\GocDeploy\Console;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Marcth\GocDeploy\Entities\GitMetadata;
-use Marcth\GocDeploy\Exceptions\ConnectionRefusedException;
 use Marcth\GocDeploy\Exceptions\DirtyWorkingTreeException;
 use Marcth\GocDeploy\Exceptions\GitMergeConflictException;
-use Marcth\GocDeploy\Exceptions\InvalidGitBranchException;
-use Marcth\GocDeploy\Exceptions\InvalidGitReferenceException;
 use Marcth\GocDeploy\Exceptions\InvalidGitRepositoryException;
 use Marcth\GocDeploy\Exceptions\InvalidPathException;
 use Marcth\GocDeploy\Exceptions\ProcessException;
 use Marcth\GocDeploy\Repositories\Repository;
 
-/**
- * Requires git
- */
 class DeployCommand extends Command
 {
     /**
@@ -51,18 +45,14 @@ class DeployCommand extends Command
      * @return void
      *
      * @throws DirtyWorkingTreeException
-     * @throws GitMergeConflictException
      * @throws InvalidGitRepositoryException
      * @throws InvalidPathException
      * @throws ProcessException
-     * @throws InvalidGitBranchException
-     * @throws InvalidGitReferenceException
-     * @throws ConnectionRefusedException
      */
     public function handle(Repository $repository)
     {
         $this->repository = $repository;
-
+        /*
         $mergeBranch = $this->argument('merge_branch') ?? config('goc-deploy.defaults.merge_branch');
         $mainBranch = $this->argument('main_branch') ?? config('goc-deploy.defaults.main_branch');
 
@@ -75,7 +65,7 @@ class DeployCommand extends Command
         $this->outputBranchVersionSummaries($metadata);
         $this->outputChangelog($changelog);
 
-        /*
+
         $question = 'Please enter the tag reference for this release to staging:';
         $releaseTag = $this->ask($question, $this->getReleaseTagSuggestion($metadata));
 
@@ -96,12 +86,81 @@ class DeployCommand extends Command
             $this->compileMessageCatalog(config('goc-deploy.lc_message_catalogs'));
             $this->npmInstall($composerPath);
             $this->npmRun($composerPath, true);
-         */
 
-        $releaseTag = '1.25.0-rc.2';
-        $this->package($metadata, $composerPath, config('goc-deploy.base_deploy_path'), $releaseTag);
 
-        $this->info('Complete');
+            $tarball = $this->package($metadata, $composerPath, config('goc-deploy.base_deploy_path'), $releaseTag);
+        */
+
+        $tarball = '/var/www/deploy/passport_1.25.0-rc.2_202109212323.tar.gz';
+
+       exec('docker build --network host -t mtweb/ssc-deploy:v1.0.0 '  . realpath(__DIR__ . '/../../runtimes'), $output, $code);
+
+        $command = [
+            'docker run',
+            '--rm',
+            '--privileged',
+            '--net="host"',
+            '--cap-add NET_ADMIN',
+            '--device /dev/net/tun',
+            '--volume ' . $tarball . ':/transfer/' . basename($tarball),
+            '--env TARBALL=' . basename($tarball),
+            '--env SSH_KNOWN_HOSTS=/root/.ssh/known_hosts',
+            '--env-file ' . realpath(__DIR__ . '/../../runtimes/opting.conf'),
+            'mtweb/ssc-deploy:v1.0.0',
+        ];
+
+
+
+        dd(implode(" ", $command));
+/*
+        IMAGE_NAME="mtweb/wormhole-transfer-agent:v1.0.1"
+
+    VOLUME_MOUNT_LOG=$(pwd)/log
+    VOLUME_MOUNT_TRANSFER_QUEUE=$(pwd)/transfer_queue
+
+    SSH_KNOWN_HOSTS="/root/.ssh/known_hosts"
+
+  COMMAND=$1
+  CONFIG_FILE=$2
+  CONTAINER_NAME="$(basename -- $CONFIG_FILE .conf)-wormhole"
+  TRANSFER_QUEUE="/transfer_queue"
+
+  if [ $(docker ps -q --filter name=$CONTAINER_NAME) ]; then
+    echo "There is already a running container with the name '$CONTAINER_NAME'."
+    echo
+    exit 1
+  fi
+
+  # Build the docker image
+  docker build -t $IMAGE_NAME .
+
+    # Ensure local volume mounts exist
+    mkdir -p \
+    $VOLUME_MOUNT_LOG/$CONTAINER_NAME \
+    $VOLUME_MOUNT_TRANSFER_QUEUE/$CONTAINER_NAME
+
+  # Run container
+  docker run --rm -d \
+      --privileged \
+      --cap-add NET_ADMIN \
+      --device /dev/net/tun \
+      --volume $VOLUME_MOUNT_LOG/$CONTAINER_NAME:/log \
+      --volume $VOLUME_MOUNT_TRANSFER_QUEUE/$CONTAINER_NAME:$TRANSFER_QUEUE \
+      --env TRANSFER_QUEUE=$TRANSFER_QUEUE \
+      --env SSH_KNOWN_HOSTS=$SSH_KNOWN_HOSTS \
+      --env-file $CONFIG_FILE \
+      --name $CONTAINER_NAME \
+      $IMAGE_NAME
+
+*/
+
+        /*
+
+
+//dd(config('goc-deploy.base_deploy_path'));
+        dd($output);
+//        $this->info($output);
+        */
         exit(0);
     }
 
@@ -158,20 +217,21 @@ class DeployCommand extends Command
         return $this;
     }
 
-    /**
-     * Prompts the user to ensure Windows is connected to "vpn.ssc.gc.ca".
-     *
-     * @return bool
-     */
-    protected function confirmVpnConnected(): bool
-    {
-        while(!$this->confirm(
-            'Please ensure Windows is connected to "vpn.ssc.gc.ca" before continuing.',
-            true
-        ));
-
-        return true;
-    }
+// Unused
+//    /**
+//     * Prompts the user to ensure Windows is connected to "vpn.ssc.gc.ca".
+//     *
+//     * @return bool
+//     */
+//    protected function confirmVpnConnected(): bool
+//    {
+//        while(!$this->confirm(
+//            'Please ensure Windows is connected to "vpn.ssc.gc.ca" before continuing.',
+//            true
+//        ));
+//
+//        return true;
+//    }
 
     /**
      * Prompts the user to ensure Windows is disconnected from "vpn.ssc.gc.ca".
@@ -426,7 +486,15 @@ class DeployCommand extends Command
         return $this;
     }
 
-    public function package(GitMetadata $metadata, string $workingTree, string $destination, string $releaseTag): self
+    /**
+     * @param GitMetadata $metadata
+     * @param string $workingTree
+     * @param string $destination
+     * @param string $releaseTag
+     * @return string
+     * @throws ProcessException
+     */
+    public function package(GitMetadata $metadata, string $workingTree, string $destination, string $releaseTag): string
     {
         $tarball = $destination . DIRECTORY_SEPARATOR . sprintf(
             '%s_%s_%s.tar.gz',
@@ -436,10 +504,10 @@ class DeployCommand extends Command
         );
 
         $this->info('Compressing "' . $workingTree . '" into "' . $tarball . '" (This may take a few moments).');
-        $output = $this->repository->package($workingTree, $tarball);
+        $this->repository->package($workingTree, $tarball);
         $this->line('"' . $tarball . '" has been saved.');
 
-        return $this;
+        return $tarball;
     }
 
     /**

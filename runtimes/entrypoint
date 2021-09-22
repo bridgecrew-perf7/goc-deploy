@@ -1,0 +1,55 @@
+#!/bin/ash
+
+#/usr/bin/openconnect --help
+
+echo $VPN_PASSWORD | /usr/bin/openconnect -u $VPN_USERNAME $VPN_SERVER --passwd-on-stdin --no-dtls -b -v
+
+
+
+
+
+
+
+echo " "
+echo " "
+echo " "
+
+#/usr/bin/sshpass -p "$SSH_PASSWORD" /usr/bin/ssh \
+#    -o StrictHostKeyChecking=no \
+#    -o UserKnownHostsFile=$SSH_KNOWN_HOSTS \
+#    $SSH_USERNAME@$SSH_SERVER \
+#    -v "ls -la"
+
+echo " "
+echo " "
+echo " "
+
+
+#sshpass -p "$SSH_PASSWORD" ssh \
+#    -o StrictHostKeyChecking=no \
+#    -o UserKnownHostsFile=$SSH_KNOWN_HOSTS \
+#    $SSH_USERNAME@$SSH_SERVER \
+#    "mkdir -p $INGEST_QURANTINE_PATH;"
+#
+#  sshpass -p "$SSH_PASSWORD" ssh \
+#    -o StrictHostKeyChecking=no \
+#    -o UserKnownHostsFile=$SSH_KNOWN_HOSTS \
+#    $SSH_USERNAME@$SSH_SERVER \
+#    "chmod 774 $INGEST_QURANTINE_PATH"
+#
+#  sshpass -p "$SSH_PASSWORD" scp \
+#    -o StrictHostKeyChecking=no \
+#    -o UserKnownHostsFile=$SSH_KNOWN_HOSTS \
+#    $SOURCE \
+#    $SSH_USERNAME@$SSH_SERVER:$TARGET
+#
+#  sshpass -p "$SSH_PASSWORD" ssh \
+#    -o StrictHostKeyChecking=no \
+#    -o UserKnownHostsFile=$SSH_KNOWN_HOSTS \
+#    $SSH_USERNAME@$SSH_SERVER \
+#    "chmod 664 $INGEST_QURANTINE_PATH/$RECEIVED_FILENAME"
+#
+#  echo "chmod 664 $INGEST_QURANTINE_PATH/$RECEIVED_FILENAME"
+
+
+
